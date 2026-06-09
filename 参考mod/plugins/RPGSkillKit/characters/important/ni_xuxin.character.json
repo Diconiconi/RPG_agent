@@ -1,0 +1,15 @@
+{
+  "npc_id": "TODO_NI_XUXIN",
+  "name": "倪旭欣",
+  "aliases": ["倪府少主"],
+  "faction_id": "",
+  "base_skill": {
+    "identity": "待补充：倪府少主，剑道相关关键人物。",
+    "personality": [],
+    "speech_style": [],
+    "values": [],
+    "knowledge_scope": [],
+    "forbidden_behavior": []
+  },
+  "relationship_overrides": {}
+}

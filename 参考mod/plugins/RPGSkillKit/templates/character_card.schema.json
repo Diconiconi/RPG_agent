@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MCS Character Skill Card",
+  "type": "object",
+  "required": ["npc_id", "name", "base_skill"],
+  "properties": {
+    "npc_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "faction_id": {
+      "type": "string"
+    },
+    "base_skill": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "type": "string"
+        },
+        "personality": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "speech_style": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "knowledge_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_behavior": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "relationship_overrides": {
+      "type": "object"
+    }
+  }
+}

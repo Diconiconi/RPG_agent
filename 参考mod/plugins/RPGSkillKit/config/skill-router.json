@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "description": "Skill loading order and routing rules for MCS NPC roleplay prompts.",
+  "load_order": [
+    "skills/global/worldview.skill.txt",
+    "skills/global/language_style.skill.txt",
+    "skills/global/roleplay_limits.skill.txt",
+    "characters/index.json",
+    "skills/faction/{faction_id}.skill.txt",
+    "skills/relationship/{relationship_stage}.skill.txt",
+    "memory/runtime/{npc_id}.memory.json",
+    "state/current_npc_state.json"
+  ],
+  "npc_resolution": {
+    "primary_key": "npc_id",
+    "fallback_keys": ["npc_name", "canonical_name"],
+    "unknown_npc_behavior": "use_global_skill_only"
+  },
+  "relationship_stage_rules": [
+    {
+      "stage": "hostile",
+      "condition": "favor < 0"
+    },
+    {
+      "stage": "stranger",
+      "condition": "favor >= 0 && favor <= 20"
+    },
+    {
+      "stage": "acquaintance",
+      "condition": "favor > 20 && favor <= 50"
+    },
+    {
+      "stage": "trusted",
+      "condition": "favor > 50 && favor <= 80"
+    },
+    {
+      "stage": "intimate",
+      "condition": "favor > 80"
+    }
+  ],
+  "token_policy": {
+    "max_character_skill_chars": 1800,
+    "max_memory_chars": 1200,
+    "max_state_chars": 1200,
+    "prefer_recent_memory": true
+  }
+}

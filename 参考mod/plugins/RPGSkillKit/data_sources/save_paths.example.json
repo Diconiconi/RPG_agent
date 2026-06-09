@@ -1,0 +1,9 @@
+{
+  "description": "Game data sources used by the prompt builder.",
+  "current_save_slot_example": "F:\\SteamLibrary\\steamapps\\common\\觅长生\\MCSSave\\Avatar0\\Slot0",
+  "npc_data": "NpcJsonData.json",
+  "npc_backpack": "NpcBackpack.json",
+  "death_npc_data": "DeathNpcJsonData.json",
+  "email_data": "EmailDataMag.bin",
+  "ai_mod_runtime": "C:\\Users\\22749\\AppData\\LocalLow\\yusuiInc\\觅长生\\MCS_AIChatMod"
+}

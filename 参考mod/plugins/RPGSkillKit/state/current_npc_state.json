@@ -1,0 +1,20 @@
+{
+  "npc_id": "",
+  "npc_name": "",
+  "gender": "",
+  "faction_id": "",
+  "cultivation_level": "",
+  "favor": 0,
+  "relationship_stage": "stranger",
+  "current_location": "",
+  "current_task": "",
+  "known_skills": [],
+  "known_static_skills": [],
+  "inventory_summary": [],
+  "player_state": {
+    "name": "",
+    "cultivation_level": "",
+    "current_location": "",
+    "active_tasks": []
+  }
+}

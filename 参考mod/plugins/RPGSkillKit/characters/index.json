@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "description": "Character skill index. Fill npc_id after matching game save data.",
+  "characters": [
+    {
+      "npc_id": "TODO_NI_XUXIN",
+      "name": "倪旭欣",
+      "file": "important/ni_xuxin.character.json"
+    },
+    {
+      "npc_id": "TODO_BAILI_QI",
+      "name": "百里奇",
+      "file": "important/baili_qi.character.json"
+    },
+    {
+      "npc_id": "TODO_XING_LINGER",
+      "name": "星铃儿",
+      "file": "important/xing_linger.character.json"
+    },
+    {
+      "npc_id": "TODO_WEI_WUJI",
+      "name": "魏无极",
+      "file": "important/wei_wuji.character.json"
+    }
+  ]
+}

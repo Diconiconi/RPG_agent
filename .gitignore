@@ -1,0 +1,43 @@
+# Local diagnostics and temporary inspection artifacts
+.inspect_*
+.tools/
+
+# Secrets and local auth
+.env
+.env.*
+*.key
+*.pem
+auth.json
+config.local.*
+*api_key*
+*apikey*
+
+# Runtime logs and generated reports
+*.log
+output_log.txt
+*.tmp
+*.bak
+
+# Game save/runtime data
+*.sav
+MCSSave/
+MCSCloudSave/
+AppData/
+LocalLow/
+
+# Build and binary artifacts
+bin/
+obj/
+*.exe
+*.pdb
+*.dll
+*.bin
+
+# Reference dependency docs generated beside binaries
+参考mod/plugins/*.xml
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

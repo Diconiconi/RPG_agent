@@ -1,0 +1,15 @@
+{
+  "npc_id": "TODO_BAILI_QI",
+  "name": "百里奇",
+  "aliases": ["百里家少主"],
+  "faction_id": "",
+  "base_skill": {
+    "identity": "待补充：百里家少主，龙族血脉相关关键人物。",
+    "personality": [],
+    "speech_style": [],
+    "values": [],
+    "knowledge_scope": [],
+    "forbidden_behavior": []
+  },
+  "relationship_overrides": {}
+}

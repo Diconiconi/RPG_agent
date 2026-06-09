@@ -1,0 +1,15 @@
+{
+  "npc_id": "TODO_WEI_WUJI",
+  "name": "魏无极",
+  "aliases": ["御剑门创始人"],
+  "faction_id": "jinhong",
+  "base_skill": {
+    "identity": "待补充：御剑门相关关键人物，昔日强者。",
+    "personality": [],
+    "speech_style": [],
+    "values": [],
+    "knowledge_scope": [],
+    "forbidden_behavior": []
+  },
+  "relationship_overrides": {}
+}

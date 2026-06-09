@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NPC Memory",
+  "type": "object",
+  "required": ["npc_id", "memories"],
+  "properties": {
+    "npc_id": {
+      "type": "string"
+    },
+    "last_updated": {
+      "type": "string"
+    },
+    "memories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "summary"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["dialog", "quest", "gift", "combat", "relationship", "system"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "game_time": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
