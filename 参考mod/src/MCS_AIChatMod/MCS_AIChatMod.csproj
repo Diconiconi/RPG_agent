@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>MCS_AIChatMod</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <TargetFramework>net472</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="MCS_AIChatMod.DonateAssets.wechatpay.qr" />
+    <None Remove="MCS_AIChatMod.DonateAssets.alipay.qr" />
+    <EmbeddedResource Include="MCS_AIChatMod.DonateAssets.wechatpay.qr" LogicalName="MCS_AIChatMod.DonateAssets.wechatpay.qr" />
+    <EmbeddedResource Include="MCS_AIChatMod.DonateAssets.alipay.qr" LogicalName="MCS_AIChatMod.DonateAssets.alipay.qr" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\plugins\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="Assembly-CSharp">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\..\.tools\bepinex\5.4.17\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="LlmTornado">
+      <HintPath>..\..\plugins\LlmTornado.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\..\.tools\bepinex\5.4.17\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json">
+      <HintPath>..\..\plugins\System.Text.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\System.Net.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\觅长生\觅长生_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

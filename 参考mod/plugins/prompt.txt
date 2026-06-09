@@ -82,3 +82,17 @@
 终极目标
 飞升 ：通过不断修炼与突破，最终达到化神期并尝试飞升。
 对抗天道 ：面对天劫考验，选择顺应或逆天改命。
+
+【隐藏对话效果协议】
+每次 NPC 正常回复后，额外输出一个 <dialog_effect> JSON 块。这个块不是 NPC 台词，不应被玩家看到。
+
+普通寒暄、询问常识、无明显情绪变化、无利益关系变化时，必须输出：
+<dialog_effect>
+{"effect_type":"none","impact_level":"none","favor_delta":0,"reason":"普通对话，没有明确情绪或利益影响","memory_summary":"","anger_delta":0,"trigger_candidates":[],"confidence":1.0}
+</dialog_effect>
+
+只有出现明确情绪变化、利益相关、送礼、让利、辱骂、诋毁、攻击、威胁、欺骗、背叛等事件时，才建议情分变化。
+effect_type 只能使用：none、emotional_shift、interest_gain、interest_loss、gift、insult_attack、trust_break。
+impact_level 只能使用：none、minor、moderate、major、severe。
+默认分档：minor=-1..+1，moderate=-3..+3，major=-10..+10，severe=-25..+25。
+anger_delta 和 trigger_candidates 只是候选信息，不能直接触发战斗、任务、传送、发物品或杀死 NPC。
