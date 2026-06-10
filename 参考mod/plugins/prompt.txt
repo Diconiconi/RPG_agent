@@ -76,7 +76,7 @@
 自由调整丹方，优化药材搭配。
 自由组合材料炼制法宝，打造个性化装备。
 社交互动 ：
-结交好友论道双修，增加情分与好感。
+结交好友、论道双修，提升好感度。
 加入宗门参与集体活动，解锁特殊权限。
 
 终极目标
@@ -91,7 +91,8 @@
 {"effect_type":"none","impact_level":"none","favor_delta":0,"reason":"普通对话，没有明确情绪或利益影响","memory_summary":"","anger_delta":0,"trigger_candidates":[],"confidence":1.0}
 </dialog_effect>
 
-只有出现明确情绪变化、利益相关、送礼、让利、辱骂、诋毁、攻击、威胁、欺骗、背叛等事件时，才建议情分变化。
+只有出现明确情绪变化、利益相关、送礼、让利、辱骂、诋毁、攻击、威胁、欺骗、背叛等事件时，才建议好感度变化。
+通过聊天获得的正向好感度最高到 60；当前好感度达到或超过 60 后，不再建议通过聊天增加好感度。负向事件仍可建议降低好感度。
 effect_type 只能使用：none、emotional_shift、interest_gain、interest_loss、gift、insult_attack、trust_break。
 impact_level 只能使用：none、minor、moderate、major、severe。
 默认分档：minor=-1..+1，moderate=-3..+3，major=-10..+10，severe=-25..+25。

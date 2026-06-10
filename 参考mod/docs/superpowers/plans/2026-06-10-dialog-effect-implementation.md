@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. This is the simplified MVP plan requested by the user: directly modify the existing reference mod instead of building a large separate framework.
 
-**Goal:** 在现有 `MCS_AIChatMod` 上加一个最小可用的“对话影响情分”功能：AI 回复中带隐藏效果 JSON，Mod 剥离 JSON、按事件分档校验，并调用游戏情分逻辑修改当前 NPC 情分。
+**Goal:** 在现有 `MCS_AIChatMod` 上加一个最小可用的“对话影响好感度”功能：AI 回复中带隐藏效果 JSON，Mod 剥离 JSON、按事件分档校验，并调用游戏好感度逻辑修改当前 NPC 好感度。通过聊天获得的正向好感度最高到 `60`，负向对话效果仍可降低好感度。
 
-**Architecture:** 直接从 `参考mod/plugins/MCS_AIChatMod.dll` 反编译出源码，在原 mod 源码中新增一个小型 `DialogEffectMvp` 处理器，并接入现有 NPC 对话回复流程。第一版只做情分变化和简短提示；`anger_delta`、`trigger_candidates` 只保留为后续扩展信息，不触发战斗或任务。
+**Architecture:** 直接从 `参考mod/plugins/MCS_AIChatMod.dll` 反编译出源码，在原 mod 源码中新增一个小型 `DialogEffectMvp` 处理器，并接入现有 NPC 对话回复流程。第一版只做好感度变化和简短提示；`anger_delta`、`trigger_candidates` 只保留为后续扩展信息，不触发战斗或任务。
 
 **Tech Stack:** C#、Unity/Mono、BepInEx/Harmony 风格参考 mod、Newtonsoft.Json、.NET SDK 8、ilspycmd、PowerShell。
 
@@ -20,7 +20,7 @@
 - 不做任务、战斗、送礼真实物品流转。
 - 不每个小步骤都提交。
 
-MVP 只追求一件事：**在原 mod 对话流程里跑通“对话 -> 情分变化”**。
+MVP 只追求一件事：**在原 mod 对话流程里跑通“对话 -> 好感度变化”**。
 
 ## 需要安装的环境
 
@@ -49,9 +49,9 @@ ilspycmd --version 能正常输出版本号
 - 创建：`参考mod/src/MCS_AIChatMod/`
   - 从 `参考mod/plugins/MCS_AIChatMod.dll` 反编译出的可编辑源码。
 - 创建：`参考mod/src/GameAssembly/`
-  - 从游戏 `Assembly-CSharp.dll` 导出的只读参考源码，用来确认 `CmdAddNPCQingFen` 内部逻辑。
+  - 从游戏 `Assembly-CSharp.dll` 导出的只读参考源码，用来确认 `NPCEx.AddFavor` / `NPCEx.GetFavor` 调用路径。
 - 创建：`参考mod/src/MCS_AIChatMod/DialogEffectMvp.cs`
-  - MVP 单文件处理器：解析隐藏 JSON、校验分档、调用情分修改、显示提示。
+  - MVP 单文件处理器：解析隐藏 JSON、校验分档、调用好感度修改、显示提示。
 - 修改：`参考mod/src/MCS_AIChatMod/NPCDialog.cs`
   - 在 AI 回复进入 UI/历史记录前调用 `DialogEffectMvp`。
 - 修改：`参考mod/plugins/prompt.txt`
@@ -101,10 +101,10 @@ ilspycmd -p -o "E:\RPG_agent\参考mod\src\GameAssembly" "F:\SteamLibrary\steama
 Verify:
 
 ```powershell
-rg -n "class CmdAddNPCQingFen|CmdAddNPCQingFen|CmdGetNPCQingFen" "E:\RPG_agent\参考mod\src\GameAssembly"
+rg -n "NPCEx\\.AddFavor|NPCEx\\.GetFavor|class NPCEx" "E:\RPG_agent\参考mod\src\GameAssembly"
 ```
 
-期望能找到 `CmdAddNPCQingFen`，它已知有字段 `NPCID`、`Count` 和方法 `OnEnter()`。
+期望能找到 `NPCEx.AddFavor` 和 `NPCEx.GetFavor` 的声明或现有调用路径。
 
 ## Task 2: 更新 prompt，让 AI 输出隐藏效果 JSON
 
@@ -125,7 +125,8 @@ Append to `参考mod/plugins/prompt.txt`:
 {"effect_type":"none","impact_level":"none","favor_delta":0,"reason":"普通对话，没有明确情绪或利益影响","memory_summary":"","anger_delta":0,"trigger_candidates":[],"confidence":1.0}
 </dialog_effect>
 
-只有出现明确情绪变化、利益相关、送礼、让利、辱骂、诋毁、攻击、威胁、欺骗、背叛等事件时，才建议情分变化。
+只有出现明确情绪变化、利益相关、送礼、让利、辱骂、诋毁、攻击、威胁、欺骗、背叛等事件时，才建议好感度变化。
+通过聊天获得的正向好感度最高到 60；当前好感度达到或超过 60 后，不再建议通过聊天增加好感度。负向事件仍可建议降低好感度。
 effect_type 只能使用：none、emotional_shift、interest_gain、interest_loss、gift、insult_attack、trust_break。
 impact_level 只能使用：none、minor、moderate、major、severe。
 默认分档：minor=-1..+1，moderate=-3..+3，major=-10..+10，severe=-25..+25。
@@ -218,7 +219,7 @@ namespace MCS_AIChatMod
                 return false;
             }
 
-            bool applied = TryAddNpcQingFen(npcId, delta);
+            bool applied = TryAddNpcFavor(npcId, delta);
             if (!applied)
             {
                 Debug.LogWarning("[MCS_AIChatMod] DialogEffectMvp failed. npcId=" + npcId + " delta=" + delta);
@@ -300,18 +301,18 @@ namespace MCS_AIChatMod
             return 0;
         }
 
-        private static bool TryAddNpcQingFen(int npcId, int delta)
+        private static bool TryAddNpcFavor(int npcId, int delta)
         {
-            // 用 Task 4 从 CmdAddNPCQingFen.OnEnter() 反编译出的最小调用替换这里。
-            // 替换前保持 false，避免误以为已经改了真实情分。
+            // 用 Task 4 从 NPCEx.AddFavor.OnEnter() 反编译出的最小调用替换这里。
+            // 替换前保持 false，避免误以为已经改了真实好感度。
             return false;
         }
 
         private static void ShowTip(int delta)
         {
             string message = delta > 0
-                ? "对方态度有所缓和：情分 +" + delta
-                : "对方态度转冷：情分 " + delta;
+                ? "对方态度有所缓和：好感度 +" + delta
+                : "对方态度转冷：好感度 " + delta;
 
             UIManager ui = UIManager.Instance;
             if (ui != null)
@@ -363,37 +364,38 @@ rg -n "DialogEffectMvp|Compile Include" "E:\RPG_agent\参考mod\src\MCS_AIChatMo
 <Compile Include="DialogEffectMvp.cs" />
 ```
 
-## Task 4: 确认并接入真实情分修改逻辑
+## Task 4: 确认并接入真实好感度修改逻辑
 
 **Files:**
 - Modify: `参考mod/src/MCS_AIChatMod/DialogEffectMvp.cs`
 
-- [ ] **Step 1: 查看 `CmdAddNPCQingFen.OnEnter()`**
+- [ ] **Step 1: 查看 `NPCEx.AddFavor` / `NPCEx.GetFavor` 用法**
 
 Run:
 
 ```powershell
-rg -n "class CmdAddNPCQingFen|OnEnter\\(" "E:\RPG_agent\参考mod\src\GameAssembly"
+rg -n "NPCEx\\.AddFavor|NPCEx\\.GetFavor|OfficialNpcFavorChangedPatch" "E:\RPG_agent\参考mod\src\MCS_AIChatMod" "E:\RPG_agent\参考mod\src\GameAssembly"
 ```
 
-打开 `CmdAddNPCQingFen` 所在 `.cs` 文件，阅读 `OnEnter()` 方法。目标是找到它实际如何根据 `NPCID` 和 `Count` 修改 NPC 情分。
+目标是确认现有任务系统和 Harmony patch 如何读写 NPC 好感度，并确认 `NPCEx.AddFavor` 会触发 `OfficialNpcFavorChangedPatch`。
 
-- [ ] **Step 2: 替换 `TryAddNpcQingFen`**
+- [ ] **Step 2: 替换 `TryAddNpcFavor` 并加入聊天收益上限**
 
-在 `参考mod/src/MCS_AIChatMod/DialogEffectMvp.cs` 中，用 `CmdAddNPCQingFen.OnEnter()` 内部确认过的最小调用路径替换：
+在 `参考mod/src/MCS_AIChatMod/DialogEffectMvp.cs` 中，用 `NPCEx.GetFavor` 和 `NPCEx.AddFavor` 替换旧执行路径：
 
 ```csharp
-private static bool TryAddNpcQingFen(int npcId, int delta)
+private static bool TryAddNpcFavor(int npcId, int delta)
 {
-    // 用 Task 4 从 CmdAddNPCQingFen.OnEnter() 反编译出的最小调用替换这里。
-    // 替换前保持 false，避免误以为已经改了真实情分。
-    return false;
+    NPCEx.AddFavor(npcId, delta);
+    return true;
 }
 ```
 
+正向 `delta` 执行前必须读取当前好感度：当前好感度 `>= 60` 时跳过；当前好感度加本次增益会超过 `60` 时，只执行到 `60` 为止。负向 `delta` 不受该上限影响。
+
 替换原则：
 
-- 优先复用游戏已有的 NPC 情分修改 API。
+- 优先复用游戏已有的 NPC 好感度修改 API。
 - 不直接改真实游戏安装目录。
 - 不直接写存档文件。
 - 如果只能通过 Fungus `Command` 触发，先暂停，确认这种调用在 mod 运行态是否安全。
@@ -480,19 +482,19 @@ Get-ChildItem -LiteralPath "E:\RPG_agent\参考mod" -Recurse -Filter "MCS_AIChat
 
 ```text
 普通对话：道友近来可好？
-期望：NPC 正常回复，不显示情分变化提示。
+期望：NPC 正常回复，不显示好感度变化提示。
 
 正向事件：此物赠予道友，也算结个善缘。
-期望：NPC 正常回复，情分增加，显示简短提示。
+期望：NPC 正常回复；当前好感度低于 60 时增加好感度并显示简短提示；接近 60 时只加到 60；达到 60 后不再通过聊天增加。
 
 负向事件：你这等见识也配与我论道？莫要自取其辱。
-期望：NPC 愤怒回复，情分降低，显示简短提示，不触发战斗。
+期望：NPC 愤怒回复，好感度降低，显示简短提示，不触发战斗。
 ```
 
 同时确认：
 
 - `<dialog_effect>` 没有显示给玩家。
-- 普通对话不会频繁改变情分。
+- 普通对话不会频繁改变好感度。
 - `trigger_candidates` 不触发任何真实游戏行为。
 - 存档没有异常。
 
@@ -502,9 +504,9 @@ MVP 完成只需要满足：
 
 - 原 mod 可以编译出 DLL。
 - AI 回复里的 `<dialog_effect>` 不显示给玩家。
-- 普通对话不改情分。
-- 正向事件能增加当前 NPC 情分。
-- 负向事件能降低当前 NPC 情分。
+- 普通对话不改好感度。
+- 正向事件能增加当前 NPC 好感度，但通过聊天获得的正向好感度最高到 `60`。
+- 负向事件能降低当前 NPC 好感度。
 - 游戏里出现简短提示。
 - 不触发战斗、任务、发物品、传送等后续行为。
 
@@ -514,8 +516,8 @@ MVP 完成只需要满足：
 
 1. 先安装 `.NET SDK 8` 和 `ilspycmd`。
 2. 反编译源码。
-3. 我读 `NPCDialog.cs` 和 `CmdAddNPCQingFen` 的真实代码。
+3. 我读 `NPCDialog.cs` 和 `NPCEx.AddFavor` 的真实代码。
 4. 我按上面最小方案改原 mod。
 5. 你进游戏用测试存档验证。
 
-不建议现在走复杂的多子任务流程。先把真实情分改动跑通，再决定要不要抽象成完整框架。
+不建议现在走复杂的多子任务流程。先把真实好感度改动跑通，再决定要不要抽象成完整框架。

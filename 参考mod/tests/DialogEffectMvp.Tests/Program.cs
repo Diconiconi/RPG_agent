@@ -16,6 +16,9 @@ namespace MCS_AIChatMod.Tests
             failed += Run("ValidateAndClamp accepts mixed-case impact level", ValidateAndClampAcceptsMixedCaseImpactLevel);
             failed += Run("BuildFallbackEffect detects explicit insult and threat", BuildFallbackEffectDetectsExplicitInsultAndThreat);
             failed += Run("BuildFallbackEffect ignores ordinary conversation", BuildFallbackEffectIgnoresOrdinaryConversation);
+            failed += Run("ApplyChatFavorGainCap caps positive gain at 60", ApplyChatFavorGainCapCapsPositiveGainAtSixty);
+            failed += Run("ApplyChatFavorGainCap blocks positive gain at 60", ApplyChatFavorGainCapBlocksPositiveGainAtSixty);
+            failed += Run("ApplyChatFavorGainCap keeps negative delta at 60", ApplyChatFavorGainCapKeepsNegativeDeltaAtSixty);
 
             if (failed > 0)
             {
@@ -102,6 +105,27 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(0, delta, "ordinary delta");
         }
 
+        private static void ApplyChatFavorGainCapCapsPositiveGainAtSixty()
+        {
+            int delta = ApplyChatFavorGainCap(58, 8);
+
+            AssertEqual(2, delta, "capped positive favor delta");
+        }
+
+        private static void ApplyChatFavorGainCapBlocksPositiveGainAtSixty()
+        {
+            int delta = ApplyChatFavorGainCap(60, 8);
+
+            AssertEqual(0, delta, "blocked positive favor delta");
+        }
+
+        private static void ApplyChatFavorGainCapKeepsNegativeDeltaAtSixty()
+        {
+            int delta = ApplyChatFavorGainCap(60, -10);
+
+            AssertEqual(-10, delta, "negative favor delta");
+        }
+
         private static object ParseReply(string raw)
         {
             Type type = GetDialogEffectType();
@@ -136,6 +160,18 @@ namespace MCS_AIChatMod.Tests
             }
 
             return method.Invoke(null, new object[] { playerInput, npcReply });
+        }
+
+        private static int ApplyChatFavorGainCap(int currentFavor, int requestedDelta)
+        {
+            Type type = GetDialogEffectType();
+            MethodInfo method = type.GetMethod("ApplyChatFavorGainCap", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("DialogEffectMvp.ApplyChatFavorGainCap was not found.");
+            }
+
+            return (int)method.Invoke(null, new object[] { currentFavor, requestedDelta });
         }
 
         private static Type GetDialogEffectType()

@@ -9,6 +9,8 @@ namespace MCS_AIChatMod;
 
 internal static class DialogEffectMvp
 {
+	private const int ChatFavorGainCap = 60;
+
 	private static readonly Regex EffectBlockRegex = new Regex("<dialog_effect>\\s*(?<json>.*?)\\s*</dialog_effect>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
 	private static readonly Dictionary<string, int[]> ImpactRanges = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase)
@@ -118,14 +120,28 @@ internal static class DialogEffectMvp
 
 	internal static bool TryApply(int npcId, string npcName, Effect effect)
 	{
-		int delta = ValidateAndClamp(effect);
-		if (npcId <= 0 || delta == 0)
+		int requestedDelta = ValidateAndClamp(effect);
+		if (npcId <= 0 || requestedDelta == 0)
 		{
 			return false;
 		}
-		if (!TryAddNpcQingFen(npcId, delta))
+		int delta = requestedDelta;
+		if (requestedDelta > 0)
 		{
-			AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 情分修改失败: npcId=" + npcId + ", delta=" + delta));
+			if (!TryGetNpcFavor(npcId, out int currentFavor))
+			{
+				return false;
+			}
+			delta = ApplyChatFavorGainCap(currentFavor, requestedDelta);
+			if (delta == 0)
+			{
+				AIChatManager.logger?.LogInfo((object)("[DialogEffectMvp] 对话好感收益已达上限: npcId=" + npcId + ", currentFavor=" + currentFavor + ", cap=" + ChatFavorGainCap));
+				return false;
+			}
+		}
+		if (!TryAddNpcFavor(npcId, delta))
+		{
+			AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 好感度修改失败: npcId=" + npcId + ", delta=" + delta));
 			return false;
 		}
 		ShowFeedbackTip(delta);
@@ -266,30 +282,52 @@ internal static class DialogEffectMvp
 		return 0;
 	}
 
-	private static bool TryAddNpcQingFen(int npcId, int delta)
+	private static int ApplyChatFavorGainCap(int currentFavor, int requestedDelta)
 	{
+		if (requestedDelta <= 0)
+		{
+			return requestedDelta;
+		}
+		if (currentFavor >= ChatFavorGainCap)
+		{
+			return 0;
+		}
+		return Math.Min(requestedDelta, ChatFavorGainCap - currentFavor);
+	}
+
+	private static bool TryGetNpcFavor(int npcId, out int currentFavor)
+	{
+		currentFavor = 0;
 		try
 		{
-			NPCEx.AddQingFen(npcId, delta, showTip: true);
+			currentFavor = NPCEx.GetFavor(npcId);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			Debug.LogWarning("[MCS_AIChatMod] DialogEffectMvp AddQingFen failed: " + ex.Message);
+			Debug.LogWarning("[MCS_AIChatMod] DialogEffectMvp GetFavor failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static bool TryAddNpcFavor(int npcId, int delta)
+	{
+		try
+		{
+			NPCEx.AddFavor(npcId, delta);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[MCS_AIChatMod] DialogEffectMvp AddFavor failed: " + ex.Message);
 			return false;
 		}
 	}
 
 	private static void ShowFeedbackTip(int delta)
 	{
-		string message = (delta > 0) ? ("\u5bf9\u65b9\u6001\u5ea6\u6709\u6240\u7f13\u548c\uff1a\u60c5\u5206 +" + delta) : ("\u5bf9\u65b9\u6001\u5ea6\u8f6c\u51b7\uff1a\u60c5\u5206 " + delta);
+		string message = (delta > 0) ? ("\u5bf9\u65b9\u6001\u5ea6\u6709\u6240\u7f13\u548c\uff1a\u597d\u611f\u5ea6 +" + delta) : ("\u5bf9\u65b9\u6001\u5ea6\u8f6c\u51b7\uff1a\u597d\u611f\u5ea6 " + delta);
 		UIManager.Instance?.AppendMessage("\u7cfb\u7edf", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
-	}
-
-	private static void ShowTip(int delta)
-	{
-		string message = (delta > 0) ? ("对方态度有所缓和：情分 +" + delta) : ("对方态度转冷：情分 " + delta);
-		UIManager.Instance?.AppendMessage("系统", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
 	}
 
 	private static int CountKeywordHits(string rawText, string compactText, IEnumerable<string> keywords)
