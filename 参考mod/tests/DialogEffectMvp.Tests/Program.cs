@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Reflection;
+using System.Text;
 using MCS_AIChatMod;
 
 namespace MCS_AIChatMod.Tests
@@ -19,6 +21,10 @@ namespace MCS_AIChatMod.Tests
             failed += Run("ApplyChatFavorGainCap caps positive gain at 60", ApplyChatFavorGainCapCapsPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap blocks positive gain at 60", ApplyChatFavorGainCapBlocksPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap keeps negative delta at 60", ApplyChatFavorGainCapKeepsNegativeDeltaAtSixty);
+            failed += Run("PromptBuilder resolves bundled card by npc id", PromptBuilderResolvesBundledCardByNpcId);
+            failed += Run("PromptBuilder resolves bundled special card by npc name", PromptBuilderResolvesBundledSpecialCardByNpcName);
+            failed += Run("PromptBuilder returns null for unknown bundled card", PromptBuilderReturnsNullForUnknownBundledCard);
+            failed += Run("PromptBuilder puts role relationship and realm before numeric attributes", PromptBuilderPutsRoleRelationshipAndRealmFirst);
 
             if (failed > 0)
             {
@@ -126,6 +132,42 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(-10, delta, "negative favor delta");
         }
 
+        private static void PromptBuilderResolvesBundledCardByNpcId()
+        {
+            string root = CreateBundledCardFixture();
+            string path = ResolveBundledCharacterCardPath(root, 20288, "倪旭欣");
+
+            AssertEndsWith(path, Path.Combine("families", "20288_ni_xuxin.character.txt"), "npc id card path");
+        }
+
+        private static void PromptBuilderResolvesBundledSpecialCardByNpcName()
+        {
+            string root = CreateBundledCardFixture();
+            string path = ResolveBundledCharacterCardPath(root, 0, "魏无极");
+
+            AssertEndsWith(path, Path.Combine("special", "wei_wuji.character.txt"), "special card path");
+        }
+
+        private static void PromptBuilderReturnsNullForUnknownBundledCard()
+        {
+            string root = CreateBundledCardFixture();
+            string path = ResolveBundledCharacterCardPath(root, 999999, "不存在的NPC");
+
+            AssertEqual<string>(null, path, "unknown card path");
+        }
+
+        private static void PromptBuilderPutsRoleRelationshipAndRealmFirst()
+        {
+            object npcInfo = CreateNpcInfoForPromptOrderTest();
+            string prompt = BuildRoleplayAttributePrompt(npcInfo, "你是测试前辈，处事稳重。");
+
+            AssertContains(prompt, "=== 最高优先：角色、关系与境界礼法 ===", "highest priority heading");
+            AssertContains(prompt, "NPC角色卡:", "character card label");
+            AssertContains(prompt, "双方境界:", "realm relationship label");
+            AssertOrder(prompt, "=== 最高优先：角色、关系与境界礼法 ===", "以下为玩家的基础信息:", "highest priority before player base info");
+            AssertOrder(prompt, "双方境界:", "以下为你要扮演的npc的基础信息:", "realm before npc numeric attributes");
+        }
+
         private static object ParseReply(string raw)
         {
             Type type = GetDialogEffectType();
@@ -174,6 +216,62 @@ namespace MCS_AIChatMod.Tests
             return (int)method.Invoke(null, new object[] { currentFavor, requestedDelta });
         }
 
+        private static string ResolveBundledCharacterCardPath(string root, int npcId, string npcName)
+        {
+            Type type = typeof(PromptBuilder);
+            MethodInfo method = type.GetMethod("ResolveBundledCharacterCardPathForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("PromptBuilder.ResolveBundledCharacterCardPathForTest was not found.");
+            }
+
+            return (string)method.Invoke(null, new object[] { root, npcId, npcName });
+        }
+
+        private static string BuildRoleplayAttributePrompt(object npcInfo, string characterContent)
+        {
+            Type type = typeof(PromptBuilder);
+            MethodInfo method = type.GetMethod("BuildRoleplayAttributePrompt", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("PromptBuilder.BuildRoleplayAttributePrompt was not found.");
+            }
+
+            return (string)method.Invoke(null, new object[] { npcInfo, characterContent });
+        }
+
+        private static string CreateBundledCardFixture()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "mcs_card_fixture_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "families"));
+            Directory.CreateDirectory(Path.Combine(root, "special"));
+            File.WriteAllText(Path.Combine(root, "families", "20288_ni_xuxin.character.txt"), "你是倪旭欣。", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(root, "special", "wei_wuji.character.txt"), "你是魏无极。", Encoding.UTF8);
+            return root;
+        }
+
+        private static object CreateNpcInfoForPromptOrderTest()
+        {
+            NPCInfo npc = new NPCInfo();
+            npc.NpcID = 9876501;
+            npc.Name = "测试金丹前辈";
+            npc.Gender = "男";
+            npc.XingGe = "稳重";
+            npc.ZhengXie = "正道";
+            npc.XiuWei = "金丹初期";
+            npc.HaoGanDu = "相熟";
+            npc.QingFen = 0;
+            npc.StatusStr = "正常";
+            npc.ShouYuan = 500;
+            npc.Age = 180;
+            npc.ZiZhi = 70;
+            npc.WuXing = 70;
+            npc.DunSu = 30;
+            npc.ShenShi = 20;
+            npc.Title = "前辈";
+            return npc;
+        }
+
         private static Type GetDialogEffectType()
         {
             Type type = typeof(AIChatManager).Assembly.GetType("MCS_AIChatMod.DialogEffectMvp");
@@ -201,6 +299,32 @@ namespace MCS_AIChatMod.Tests
             if (!object.Equals(expected, actual))
             {
                 throw new InvalidOperationException(label + " expected <" + expected + "> but got <" + actual + ">.");
+            }
+        }
+
+        private static void AssertEndsWith(string actual, string expectedSuffix, string label)
+        {
+            if (string.IsNullOrEmpty(actual) || !actual.Replace('\\', '/').EndsWith(expectedSuffix.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(label + " expected suffix <" + expectedSuffix + "> but got <" + actual + ">.");
+            }
+        }
+
+        private static void AssertContains(string text, string expected, string label)
+        {
+            if (text == null || !text.Contains(expected))
+            {
+                throw new InvalidOperationException(label + " expected to contain <" + expected + ">.");
+            }
+        }
+
+        private static void AssertOrder(string text, string earlier, string later, string label)
+        {
+            int earlierIndex = text.IndexOf(earlier, StringComparison.Ordinal);
+            int laterIndex = text.IndexOf(later, StringComparison.Ordinal);
+            if (earlierIndex < 0 || laterIndex < 0 || earlierIndex >= laterIndex)
+            {
+                throw new InvalidOperationException(label + " expected <" + earlier + "> before <" + later + ">.");
             }
         }
     }

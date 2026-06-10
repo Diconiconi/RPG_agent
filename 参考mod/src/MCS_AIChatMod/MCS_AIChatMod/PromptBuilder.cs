@@ -10,23 +10,113 @@ namespace MCS_AIChatMod;
 
 public static class PromptBuilder
 {
+	private static readonly Dictionary<string, string> BundledCharacterCardAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+	{
+		{ "星铃儿", Path.Combine("special", "xing_linger_xingning.character.txt") },
+		{ "星凝", Path.Combine("special", "xing_linger_xingning.character.txt") },
+		{ "魏无极", Path.Combine("special", "wei_wuji.character.txt") },
+		{ "吞云大圣", Path.Combine("special", "tunyun_dasheng.character.txt") },
+		{ "火麒麟", Path.Combine("special", "huoqilin.character.txt") },
+		{ "冲虚", Path.Combine("special", "chongxu.character.txt") },
+		{ "白帝", Path.Combine("special", "baidi.character.txt") }
+	};
+
 	public static string LoadCharacterCard(string targetFilePath)
+	{
+		return LoadCharacterCard(targetFilePath, null);
+	}
+
+	private static string LoadCharacterCard(string targetFilePath, NPCInfo npcInfo)
 	{
 		try
 		{
-			if (!File.Exists(targetFilePath))
+			if (File.Exists(targetFilePath))
 			{
-				File.WriteAllText(targetFilePath, "空白角色卡");
-				AIChatManager.logger.LogInfo((object)"目标角色卡文件不存在，已创建空白卡！");
-				return "";
+				return File.ReadAllText(targetFilePath);
 			}
-			return File.ReadAllText(targetFilePath);
+			if (npcInfo != null && TryLoadBundledCharacterCard(npcInfo.NpcID, npcInfo.Name, out var characterContent))
+			{
+				File.WriteAllText(targetFilePath, characterContent, Encoding.UTF8);
+				AIChatManager.logger?.LogInfo((object)("[PromptBuilder] 已从内置角色卡初始化: " + targetFilePath));
+				return characterContent;
+			}
+			File.WriteAllText(targetFilePath, "空白角色卡", Encoding.UTF8);
+			AIChatManager.logger?.LogInfo((object)"目标角色卡文件不存在，已创建空白卡！");
+			return "";
 		}
 		catch (Exception ex)
 		{
-			AIChatManager.logger.LogError((object)("加载角色卡时出错: " + ex.Message));
+			AIChatManager.logger?.LogError((object)("加载角色卡时出错: " + ex.Message));
 			return null;
 		}
+	}
+
+	private static bool TryLoadBundledCharacterCard(int npcId, string npcName, out string content)
+	{
+		content = string.Empty;
+		string bundledPath = ResolveBundledCharacterCardPath(ResolveBundledCharacterCardRoot(), npcId, npcName);
+		if (string.IsNullOrEmpty(bundledPath))
+		{
+			return false;
+		}
+		try
+		{
+			content = TextEncodingUtil.ReadAllTextWithFallback(bundledPath);
+			return !string.IsNullOrWhiteSpace(content);
+		}
+		catch (Exception ex)
+		{
+			AIChatManager.logger?.LogWarning((object)("[PromptBuilder] 读取内置角色卡失败: " + bundledPath + ", " + ex.Message));
+			content = string.Empty;
+			return false;
+		}
+	}
+
+	private static string ResolveBundledCharacterCardRoot()
+	{
+		string pluginDirectory = ConfigManager.pluginDirectory;
+		if (string.IsNullOrWhiteSpace(pluginDirectory))
+		{
+			pluginDirectory = Path.GetDirectoryName(typeof(PromptBuilder).Assembly.Location);
+		}
+		if (string.IsNullOrWhiteSpace(pluginDirectory))
+		{
+			return string.Empty;
+		}
+		return Path.Combine(pluginDirectory, "RPGSkillKit", "character_cards_minimal");
+	}
+
+	private static string ResolveBundledCharacterCardPath(string bundledRoot, int npcId, string npcName)
+	{
+		if (string.IsNullOrWhiteSpace(bundledRoot) || !Directory.Exists(bundledRoot))
+		{
+			return null;
+		}
+		if (npcId > 0)
+		{
+			string idPrefix = npcId.ToString() + "_";
+			string idMatch = Directory.GetFiles(bundledRoot, "*.character.txt", SearchOption.AllDirectories)
+				.OrderBy((string path) => path, StringComparer.OrdinalIgnoreCase)
+				.FirstOrDefault((string path) => Path.GetFileName(path).StartsWith(idPrefix, StringComparison.OrdinalIgnoreCase));
+			if (!string.IsNullOrEmpty(idMatch))
+			{
+				return idMatch;
+			}
+		}
+		if (!string.IsNullOrWhiteSpace(npcName) && BundledCharacterCardAliases.TryGetValue(npcName.Trim(), out var relativePath))
+		{
+			string aliasPath = Path.Combine(bundledRoot, relativePath);
+			if (File.Exists(aliasPath))
+			{
+				return aliasPath;
+			}
+		}
+		return null;
+	}
+
+	internal static string ResolveBundledCharacterCardPathForTest(string bundledRoot, int npcId, string npcName)
+	{
+		return ResolveBundledCharacterCardPath(bundledRoot, npcId, npcName);
 	}
 
 	private static PromptPlayerProfile BuildPlayerPromptProfile(int observerShenShi)
@@ -60,7 +150,7 @@ public static class PromptBuilder
 		}
 		catch (Exception ex)
 		{
-			AIChatManager.logger.LogWarning((object)("[PromptBuilder] 构建玩家身份信息失败: " + ex.Message));
+			AIChatManager.logger?.LogWarning((object)("[PromptBuilder] 构建玩家身份信息失败: " + ex.Message));
 		}
 		return profile;
 	}
@@ -90,7 +180,17 @@ public static class PromptBuilder
 		StringBuilder sb = new StringBuilder();
 		sb.AppendLine("请你扮演觅长生世界中的npc,每次回复控制在50字以内");
 		sb.AppendLine();
+		sb.AppendLine("=== 最高优先：角色、关系与境界礼法 ===");
+		sb.AppendLine("以下内容优先级高于普通闲聊、最近对话和杂项数值。回答时必须先符合角色卡、双方关系和境界礼法。");
+		sb.AppendLine("NPC角色卡:");
+		sb.AppendLine(string.IsNullOrWhiteSpace(characterContent) ? "空白角色卡" : characterContent.Trim());
+		sb.AppendLine();
 		sb.AppendLine(BuildRelationshipPriorityBlock(playerProfile.Name, playerProfile.Gender, playerProfile.Cultivation, playerProfile.Faction, playerProfile.Identity, AIQuestPromptBuilder.ResolveNpcPlayerRelationshipForPrompt(npcInfo?.NpcID ?? 0), playerProfile.VisibilitySummary));
+		sb.AppendLine();
+		sb.AppendLine("双方境界:");
+		sb.AppendLine("玩家境界: " + playerProfile.Cultivation);
+		sb.AppendLine("NPC境界: " + npcInfo.XiuWei);
+		sb.AppendLine("境界礼法: 若对方境界明显高于你，称呼和语气必须更克制、敬重、谨慎，不要轻易挑衅或猖狂；若你无法确认玩家真实境界，也应保留修士间的基本分寸，先试探而不是冒犯。若你的角色卡明确设定为高位、狂傲或敌对，也要让冒犯建立在角色动机和实力判断上，而不是无意义发疯。");
 		sb.AppendLine();
 		sb.AppendLine("以下为玩家的基础信息:");
 		sb.AppendLine("玩家的名字:" + playerProfile.Name);
@@ -100,7 +200,6 @@ public static class PromptBuilder
 		sb.AppendLine("玩家的当前身份:" + playerProfile.Identity + ",");
 		sb.AppendLine();
 		sb.AppendLine("以下为你要扮演的npc的基础信息:");
-		sb.AppendLine("npc的角色卡:" + characterContent);
 		sb.AppendLine($"npc的id:{npcInfo.NpcID},");
 		sb.AppendLine("名字: " + npcInfo.Name + ", ");
 		sb.AppendLine("性别: " + npcInfo.Gender + ",");
@@ -117,11 +216,11 @@ public static class PromptBuilder
 		sb.AppendLine($"遁速: {npcInfo.DunSu}, ");
 		sb.AppendLine($"神识: {npcInfo.ShenShi}, ");
 		sb.AppendLine("称号: " + npcInfo.Title);
-		if (ConfigManager.includeNpcInventoryInPrompt.Value)
+		if (ConfigManager.includeNpcInventoryInPrompt?.Value == true)
 		{
 			sb.AppendLine("背包物品(最多20项): " + JoinLimited(npcInfo.BackPackNames, 20));
 		}
-		if (ConfigManager.includeNpcSkillsInPrompt.Value)
+		if (ConfigManager.includeNpcSkillsInPrompt?.Value == true)
 		{
 			sb.AppendLine("功法(最多12项): " + JoinLimited(npcInfo.StaticSkillsNames, 12));
 			sb.AppendLine("神通(最多12项): " + JoinLimited(npcInfo.SkillsNames, 12));
@@ -133,7 +232,7 @@ public static class PromptBuilder
 	{
 		List<ChatMessage> initMessages = new List<ChatMessage>();
 		string saveFileName = $"{npcInfo.NpcID}_{npcInfo.Name}_character".Replace("/", "_");
-		string characterContent = LoadCharacterCard(AIChatManager.targetFilePath = Path.Combine(Application.persistentDataPath, saveFileName + ".txt"));
+		string characterContent = LoadCharacterCard(AIChatManager.targetFilePath = Path.Combine(Application.persistentDataPath, saveFileName + ".txt"), npcInfo);
 		initMessages.Add(new ChatMessage("system", ConfigManager.npcPromptConfig.Value));
 		string attributePrompt = BuildRoleplayAttributePrompt(npcInfo, characterContent);
 		initMessages.Add(new ChatMessage("user", attributePrompt));
