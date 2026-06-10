@@ -129,7 +129,8 @@ public class NPCDialog : MonoBehaviour
 			string tokenUsageText = AIChatManager.BuildLastChatRoundTokenUsageText();
 			DialogEntry npcEntry = AddDialogEntry(speakerName, aiResponse, tokenUsageText, QuestStorySpeakerType.Npc);
 			UIManager.Instance?.AppendMessage(speakerName, aiResponse, isPlayer: false, npcEntry.gameTimeText, npcEntry.tokenUsageText, QuestStorySpeakerType.Npc);
-			DialogEffectMvp.TryApply(currentNpcId, speakerName, parsedReply.Effect);
+			DialogEffectMvp.Effect effect = DialogEffectMvp.ResolveEffectForApplication(inputText, aiResponse, parsedReply.Effect);
+			DialogEffectMvp.TryApply(currentNpcId, speakerName, effect);
 		}
 		catch (Exception ex)
 		{

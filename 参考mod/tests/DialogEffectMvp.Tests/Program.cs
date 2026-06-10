@@ -14,6 +14,8 @@ namespace MCS_AIChatMod.Tests
             failed += Run("ValidateAndClamp clamps severe insult", ValidateAndClampClampsSevereInsult);
             failed += Run("ValidateAndClamp rejects low-confidence event", ValidateAndClampRejectsLowConfidenceEvent);
             failed += Run("ValidateAndClamp accepts mixed-case impact level", ValidateAndClampAcceptsMixedCaseImpactLevel);
+            failed += Run("BuildFallbackEffect detects explicit insult and threat", BuildFallbackEffectDetectsExplicitInsultAndThreat);
+            failed += Run("BuildFallbackEffect ignores ordinary conversation", BuildFallbackEffectIgnoresOrdinaryConversation);
 
             if (failed > 0)
             {
@@ -81,6 +83,25 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(8, delta, "mixed-case impact level delta");
         }
 
+        private static void BuildFallbackEffectDetectsExplicitInsultAndThreat()
+        {
+            object effect = BuildFallbackEffect("ni zhe zhong feiwu ye gan dang wo de lu? zai duo zui wo jiu rang ni shenbai minglie.", "dao you he bi ru ren?");
+            int delta = ValidateAndClamp(effect);
+
+            AssertEqual("insult_attack", GetField<string>(effect, "EffectType"), "fallback effect type");
+            AssertEqual("major", GetField<string>(effect, "ImpactLevel"), "fallback impact level");
+            AssertEqual(-10, delta, "fallback threat delta");
+        }
+
+        private static void BuildFallbackEffectIgnoresOrdinaryConversation()
+        {
+            object effect = BuildFallbackEffect("ni hao, qing wen jinri tianqi ruhe?", "dao you, jinri feng he ri li.");
+            int delta = ValidateAndClamp(effect);
+
+            AssertEqual("none", GetField<string>(effect, "EffectType"), "ordinary effect type");
+            AssertEqual(0, delta, "ordinary delta");
+        }
+
         private static object ParseReply(string raw)
         {
             Type type = GetDialogEffectType();
@@ -103,6 +124,18 @@ namespace MCS_AIChatMod.Tests
             }
 
             return (int)method.Invoke(null, new[] { effect });
+        }
+
+        private static object BuildFallbackEffect(string playerInput, string npcReply)
+        {
+            Type type = GetDialogEffectType();
+            MethodInfo method = type.GetMethod("BuildFallbackEffect", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("DialogEffectMvp.BuildFallbackEffect was not found.");
+            }
+
+            return method.Invoke(null, new object[] { playerInput, npcReply });
         }
 
         private static Type GetDialogEffectType()

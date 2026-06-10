@@ -20,6 +20,50 @@ internal static class DialogEffectMvp
 		{ "severe", new[] { -25, 25 } }
 	};
 
+	private static readonly string[] FallbackInsultKeywords = new[]
+	{
+		"\u5e9f\u7269",
+		"\u72d7\u4e1c\u897f",
+		"\u8812\u8d27",
+		"\u50bb\u5b50",
+		"\u5783\u573e",
+		"\u6df7\u8d26",
+		"\u4e0d\u914d",
+		"\u755c\u751f",
+		"feiwu",
+		"goudongxi",
+		"gou dongxi",
+		"chunhuo",
+		"laji",
+		"bupei"
+	};
+
+	private static readonly string[] FallbackThreatKeywords = new[]
+	{
+		"\u8eab\u8d25\u540d\u88c2",
+		"\u518d\u591a\u5634",
+		"\u4f60\u7b49\u7740",
+		"\u8ba9\u4f60",
+		"\u627e\u6b7b",
+		"shenbaiminglie",
+		"shenbai minglie",
+		"zai duo zui",
+		"rang ni"
+	};
+
+	private static readonly string[] FallbackSevereThreatKeywords = new[]
+	{
+		"\u6740\u4e86\u4f60",
+		"\u5f04\u6b7b",
+		"\u706d\u4e86\u4f60",
+		"\u706d\u95e8",
+		"\u53d6\u4f60\u6027\u547d",
+		"sha le ni",
+		"shale ni",
+		"nongsi",
+		"miemen"
+	};
+
 	internal sealed class ParsedReply
 	{
 		public string VisibleText;
@@ -84,9 +128,64 @@ internal static class DialogEffectMvp
 			AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 情分修改失败: npcId=" + npcId + ", delta=" + delta));
 			return false;
 		}
-		ShowTip(delta);
+		ShowFeedbackTip(delta);
 		AIChatManager.logger?.LogInfo((object)("[DialogEffectMvp] 已应用对话效果: npcId=" + npcId + ", npcName=" + npcName + ", delta=" + delta + ", type=" + effect.EffectType + ", reason=" + effect.Reason));
 		return true;
+	}
+
+	internal static Effect ResolveEffectForApplication(string playerInput, string npcVisibleReply, Effect parsedEffect)
+	{
+		if (ValidateAndClamp(parsedEffect) != 0)
+		{
+			return parsedEffect;
+		}
+		return BuildFallbackEffect(playerInput, npcVisibleReply);
+	}
+
+	private static Effect BuildFallbackEffect(string playerInput, string npcReply)
+	{
+		string rawText = ((playerInput ?? string.Empty) + "\n" + (npcReply ?? string.Empty)).ToLowerInvariant();
+		string compactText = RemoveWhitespace(rawText);
+		int insultHits = CountKeywordHits(rawText, compactText, FallbackInsultKeywords);
+		int threatHits = CountKeywordHits(rawText, compactText, FallbackThreatKeywords);
+		int severeThreatHits = CountKeywordHits(rawText, compactText, FallbackSevereThreatKeywords);
+		if (insultHits <= 0 && threatHits <= 0 && severeThreatHits <= 0)
+		{
+			return new Effect();
+		}
+		if (severeThreatHits > 0)
+		{
+			return new Effect
+			{
+				EffectType = "insult_attack",
+				ImpactLevel = "severe",
+				FavorDelta = -25,
+				Reason = "local fallback detected explicit lethal threat",
+				AngerDelta = 25,
+				Confidence = 0.9
+			};
+		}
+		if (threatHits > 0)
+		{
+			return new Effect
+			{
+				EffectType = "insult_attack",
+				ImpactLevel = "major",
+				FavorDelta = -10,
+				Reason = "local fallback detected explicit insult or threat",
+				AngerDelta = 15,
+				Confidence = 0.85
+			};
+		}
+		return new Effect
+		{
+			EffectType = "insult_attack",
+			ImpactLevel = "moderate",
+			FavorDelta = -3,
+			Reason = "local fallback detected explicit insult",
+			AngerDelta = 8,
+			Confidence = 0.8
+		};
 	}
 
 	private static Effect ParseEffectJson(string json)
@@ -181,10 +280,63 @@ internal static class DialogEffectMvp
 		}
 	}
 
+	private static void ShowFeedbackTip(int delta)
+	{
+		string message = (delta > 0) ? ("\u5bf9\u65b9\u6001\u5ea6\u6709\u6240\u7f13\u548c\uff1a\u60c5\u5206 +" + delta) : ("\u5bf9\u65b9\u6001\u5ea6\u8f6c\u51b7\uff1a\u60c5\u5206 " + delta);
+		UIManager.Instance?.AppendMessage("\u7cfb\u7edf", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
+	}
+
 	private static void ShowTip(int delta)
 	{
 		string message = (delta > 0) ? ("对方态度有所缓和：情分 +" + delta) : ("对方态度转冷：情分 " + delta);
 		UIManager.Instance?.AppendMessage("系统", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
+	}
+
+	private static int CountKeywordHits(string rawText, string compactText, IEnumerable<string> keywords)
+	{
+		int hits = 0;
+		foreach (string keyword in keywords)
+		{
+			if (ContainsFallbackKeyword(rawText, compactText, keyword))
+			{
+				hits++;
+			}
+		}
+		return hits;
+	}
+
+	private static bool ContainsFallbackKeyword(string rawText, string compactText, string keyword)
+	{
+		if (string.IsNullOrWhiteSpace(keyword))
+		{
+			return false;
+		}
+		string normalizedKeyword = keyword.ToLowerInvariant();
+		if (rawText.Contains(normalizedKeyword))
+		{
+			return true;
+		}
+		string compactKeyword = RemoveWhitespace(normalizedKeyword);
+		return compactKeyword.Length > 0 && compactText.Contains(compactKeyword);
+	}
+
+	private static string RemoveWhitespace(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+		{
+			return string.Empty;
+		}
+		char[] buffer = new char[text.Length];
+		int length = 0;
+		for (int i = 0; i < text.Length; i++)
+		{
+			char ch = text[i];
+			if (!char.IsWhiteSpace(ch))
+			{
+				buffer[length++] = ch;
+			}
+		}
+		return new string(buffer, 0, length);
 	}
 
 	private static string ReadString(JObject obj, string key, string fallback)
