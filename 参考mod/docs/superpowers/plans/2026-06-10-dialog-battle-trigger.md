@@ -4,6 +4,8 @@
 
 **Goal:** 在现有对话效果分级基础上，新增“严重冲突 + NPC 明确宣战回复”后自动触发与该 NPC 战斗。
 
+**Status:** 已于 2026-06-11 执行完成。实现保持原好感度分级不变，只增加本地战斗触发判定与标准战斗调用；实际 prompt 提示补充在 `参考mod/plugins/prompt.txt`。
+
 **Architecture:** 保持现有 `DialogEffectMvp` 流程不重做：玩家输入和 NPC 可见回复仍先解析成对话效果，并照旧执行好感度扣减。只新增一个战斗触发判定层：当效果为 `insult_attack / severe` 且 NPC 回复包含明确开战意图时，在好感度应用后显示系统提示并调用游戏已有 `StartFight.Do(...)`。`NPCDialog.OnUISendMessage(...)` 只多接收 `TryApply(...)` 的结果，并在同一轮最多尝试一次战斗。
 
 **Tech Stack:** C#、Unity/Mono、BepInEx、Fungus `StartFight.Do(...)`、现有 `DialogEffectMvp.Tests` 轻量测试工程。

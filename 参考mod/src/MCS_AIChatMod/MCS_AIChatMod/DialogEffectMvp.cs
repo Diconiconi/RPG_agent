@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Fungus;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
@@ -66,6 +67,40 @@ internal static class DialogEffectMvp
 		"miemen"
 	};
 
+	private static readonly string[] BattleChallengeKeywords = new[]
+	{
+		"开战",
+		"战吧",
+		"一战",
+		"与你一战",
+		"与我一战",
+		"拔剑",
+		"亮剑",
+		"动手",
+		"出手",
+		"领教",
+		"讨教",
+		"休怪我",
+		"休怪在下",
+		"今日便教训你",
+		"今日便让你",
+		"手底下见真章",
+		"剑下见真章"
+	};
+
+	private static readonly string[] BattleRefusalKeywords = new[]
+	{
+		"不与你计较",
+		"懒得动手",
+		"不屑动手",
+		"不愿动手",
+		"今日饶你",
+		"滚吧",
+		"退下",
+		"莫要再说",
+		"休要再言"
+	};
+
 	internal sealed class ParsedReply
 	{
 		public string VisibleText;
@@ -118,8 +153,19 @@ internal static class DialogEffectMvp
 		};
 	}
 
-	internal static bool TryApply(int npcId, string npcName, Effect effect)
+	internal static bool TryApply(int npcId, string npcName, Effect effect, out int appliedDelta)
 	{
+		return TryApplyInternal(npcId, npcName, effect, showFeedback: true, out appliedDelta);
+	}
+
+	internal static bool TryApplyWithoutFeedback(int npcId, string npcName, Effect effect, out int appliedDelta)
+	{
+		return TryApplyInternal(npcId, npcName, effect, showFeedback: false, out appliedDelta);
+	}
+
+	private static bool TryApplyInternal(int npcId, string npcName, Effect effect, bool showFeedback, out int appliedDelta)
+	{
+		appliedDelta = 0;
 		int requestedDelta = ValidateAndClamp(effect);
 		if (npcId <= 0 || requestedDelta == 0)
 		{
@@ -144,7 +190,11 @@ internal static class DialogEffectMvp
 			AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 好感度修改失败: npcId=" + npcId + ", delta=" + delta));
 			return false;
 		}
-		ShowFeedbackTip(delta);
+		appliedDelta = delta;
+		if (showFeedback)
+		{
+			ShowFeedbackTip(delta);
+		}
 		AIChatManager.logger?.LogInfo((object)("[DialogEffectMvp] 已应用对话效果: npcId=" + npcId + ", npcName=" + npcName + ", delta=" + delta + ", type=" + effect.EffectType + ", reason=" + effect.Reason));
 		return true;
 	}
@@ -156,6 +206,59 @@ internal static class DialogEffectMvp
 			return parsedEffect;
 		}
 		return BuildFallbackEffect(playerInput, npcVisibleReply);
+	}
+
+	internal static bool ShouldTriggerBattleAfterDialogForDialog(int npcId, string npcVisibleReply, Effect effect)
+	{
+		return npcId > 0 && ShouldTriggerBattleAfterDialog(npcVisibleReply, effect, ValidateAndClamp(effect));
+	}
+
+	internal static bool TryTriggerBattleAfterDialog(int npcId, string npcName, string npcVisibleReply, Effect effect, int appliedDelta)
+	{
+		if (npcId <= 0 || !ShouldTriggerBattleAfterDialog(npcVisibleReply, effect, appliedDelta))
+		{
+			return false;
+		}
+		try
+		{
+			if (Tools.instance?.getPlayer() == null)
+			{
+				AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 战斗触发失败：玩家实例不存在, npcId=" + npcId));
+				return false;
+			}
+			ShowBattleTriggerTip(appliedDelta);
+			StartFight.Do(npcId, 1, StartFight.MonstarType.Normal, StartFight.FightEnumType.Normal, 0, 0, 0, 0, "战斗3", SeaRemoveNPCFlag: false, string.Empty, new List<StarttFightAddBuff>(), new List<StarttFightAddBuff>());
+			AIChatManager.logger?.LogInfo((object)("[DialogEffectMvp] 已由对话触发战斗: npcId=" + npcId + ", npcName=" + npcName + ", delta=" + appliedDelta));
+			return true;
+		}
+		catch (Exception ex)
+		{
+			AIChatManager.logger?.LogWarning((object)("[DialogEffectMvp] 战斗触发异常: npcId=" + npcId + ", " + ex.Message));
+			return false;
+		}
+	}
+
+	private static bool ShouldTriggerBattleAfterDialog(string npcVisibleReply, Effect effect, int appliedDelta)
+	{
+		if (effect == null || appliedDelta > -25)
+		{
+			return false;
+		}
+		if (!string.Equals(effect.EffectType, "insult_attack", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+		if (!string.Equals(effect.ImpactLevel, "severe", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+		string rawReply = (npcVisibleReply ?? string.Empty).ToLowerInvariant();
+		string compactReply = RemoveWhitespace(rawReply);
+		if (CountKeywordHits(rawReply, compactReply, BattleRefusalKeywords) > 0)
+		{
+			return false;
+		}
+		return CountKeywordHits(rawReply, compactReply, BattleChallengeKeywords) > 0;
 	}
 
 	private static Effect BuildFallbackEffect(string playerInput, string npcReply)
@@ -328,6 +431,12 @@ internal static class DialogEffectMvp
 	{
 		string message = (delta > 0) ? ("\u5bf9\u65b9\u6001\u5ea6\u6709\u6240\u7f13\u548c\uff1a\u597d\u611f\u5ea6 +" + delta) : ("\u5bf9\u65b9\u6001\u5ea6\u8f6c\u51b7\uff1a\u597d\u611f\u5ea6 " + delta);
 		UIManager.Instance?.AppendMessage("\u7cfb\u7edf", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
+	}
+
+	private static void ShowBattleTriggerTip(int delta)
+	{
+		string message = "对方怒意已决，好感度 " + delta + "，即将进入战斗。";
+		UIManager.Instance?.AppendMessage("系统", message, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), string.Empty, null);
 	}
 
 	private static int CountKeywordHits(string rawText, string compactText, IEnumerable<string> keywords)

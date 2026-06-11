@@ -130,7 +130,15 @@ public class NPCDialog : MonoBehaviour
 			DialogEntry npcEntry = AddDialogEntry(speakerName, aiResponse, tokenUsageText, QuestStorySpeakerType.Npc);
 			UIManager.Instance?.AppendMessage(speakerName, aiResponse, isPlayer: false, npcEntry.gameTimeText, npcEntry.tokenUsageText, QuestStorySpeakerType.Npc);
 			DialogEffectMvp.Effect effect = DialogEffectMvp.ResolveEffectForApplication(inputText, aiResponse, parsedReply.Effect);
-			DialogEffectMvp.TryApply(currentNpcId, speakerName, effect);
+			bool shouldTriggerBattle = DialogEffectMvp.ShouldTriggerBattleAfterDialogForDialog(currentNpcId, aiResponse, effect);
+			int appliedDelta;
+			bool applied = shouldTriggerBattle
+				? DialogEffectMvp.TryApplyWithoutFeedback(currentNpcId, speakerName, effect, out appliedDelta)
+				: DialogEffectMvp.TryApply(currentNpcId, speakerName, effect, out appliedDelta);
+			if (applied && shouldTriggerBattle)
+			{
+				DialogEffectMvp.TryTriggerBattleAfterDialog(currentNpcId, speakerName, aiResponse, effect, appliedDelta);
+			}
 		}
 		catch (Exception ex)
 		{

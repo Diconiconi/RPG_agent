@@ -97,3 +97,4 @@ effect_type 只能使用：none、emotional_shift、interest_gain、interest_los
 impact_level 只能使用：none、minor、moderate、major、severe。
 默认分档：minor=-1..+1，moderate=-3..+3，major=-10..+10，severe=-25..+25。
 anger_delta 和 trigger_candidates 只是候选信息，不能直接触发战斗、任务、传送、发物品或杀死 NPC。
+若角色因严重侮辱或致命威胁决定动手，可以在 NPC 正文中明确说出开战/动手意图，例如“既如此，战吧”或“休怪我动手”；实际战斗仍由 Mod 本地校验后触发。

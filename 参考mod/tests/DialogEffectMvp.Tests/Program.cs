@@ -21,6 +21,9 @@ namespace MCS_AIChatMod.Tests
             failed += Run("ApplyChatFavorGainCap caps positive gain at 60", ApplyChatFavorGainCapCapsPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap blocks positive gain at 60", ApplyChatFavorGainCapBlocksPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap keeps negative delta at 60", ApplyChatFavorGainCapKeepsNegativeDeltaAtSixty);
+            failed += Run("Dialog battle trigger detects clear challenge reply", DialogBattleTriggerDetectsClearChallengeReply);
+            failed += Run("Dialog battle trigger ignores warning-only reply", DialogBattleTriggerIgnoresWarningOnlyReply);
+            failed += Run("Dialog battle trigger requires severe insult attack", DialogBattleTriggerRequiresSevereInsultAttack);
             failed += Run("PromptBuilder resolves bundled card by npc id", PromptBuilderResolvesBundledCardByNpcId);
             failed += Run("PromptBuilder resolves bundled special card by npc name", PromptBuilderResolvesBundledSpecialCardByNpcName);
             failed += Run("PromptBuilder returns null for unknown bundled card", PromptBuilderReturnsNullForUnknownBundledCard);
@@ -132,6 +135,30 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(-10, delta, "negative favor delta");
         }
 
+        private static void DialogBattleTriggerDetectsClearChallengeReply()
+        {
+            object effect = CreateEffect("insult_attack", "severe", -25, 0.95);
+            bool shouldTrigger = ShouldTriggerBattleAfterDialog("今日便与你一战，拔剑吧！", effect, -25);
+
+            AssertEqual(true, shouldTrigger, "clear challenge should trigger battle");
+        }
+
+        private static void DialogBattleTriggerIgnoresWarningOnlyReply()
+        {
+            object effect = CreateEffect("insult_attack", "severe", -25, 0.95);
+            bool shouldTrigger = ShouldTriggerBattleAfterDialog("滚吧，我今日不与你计较。", effect, -25);
+
+            AssertEqual(false, shouldTrigger, "warning-only reply should not trigger battle");
+        }
+
+        private static void DialogBattleTriggerRequiresSevereInsultAttack()
+        {
+            object effect = CreateEffect("insult_attack", "major", -10, 0.95);
+            bool shouldTrigger = ShouldTriggerBattleAfterDialog("既如此，战吧。", effect, -10);
+
+            AssertEqual(false, shouldTrigger, "major insult should not trigger battle");
+        }
+
         private static void PromptBuilderResolvesBundledCardByNpcId()
         {
             string root = CreateBundledCardFixture();
@@ -202,6 +229,35 @@ namespace MCS_AIChatMod.Tests
             }
 
             return method.Invoke(null, new object[] { playerInput, npcReply });
+        }
+
+        private static object CreateEffect(string effectType, string impactLevel, int favorDelta, double confidence)
+        {
+            Type type = GetDialogEffectType();
+            Type effectTypeObject = type.GetNestedType("Effect", BindingFlags.NonPublic);
+            if (effectTypeObject == null)
+            {
+                throw new InvalidOperationException("DialogEffectMvp.Effect type was not found.");
+            }
+
+            object effect = Activator.CreateInstance(effectTypeObject);
+            SetField(effect, "EffectType", effectType);
+            SetField(effect, "ImpactLevel", impactLevel);
+            SetField(effect, "FavorDelta", favorDelta);
+            SetField(effect, "Confidence", confidence);
+            return effect;
+        }
+
+        private static bool ShouldTriggerBattleAfterDialog(string npcReply, object effect, int appliedDelta)
+        {
+            Type type = GetDialogEffectType();
+            MethodInfo method = type.GetMethod("ShouldTriggerBattleAfterDialog", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("DialogEffectMvp.ShouldTriggerBattleAfterDialog was not found.");
+            }
+
+            return (bool)method.Invoke(null, new object[] { npcReply, effect, appliedDelta });
         }
 
         private static int ApplyChatFavorGainCap(int currentFavor, int requestedDelta)
@@ -292,6 +348,17 @@ namespace MCS_AIChatMod.Tests
             }
 
             return (T)field.GetValue(target);
+        }
+
+        private static void SetField<T>(object target, string name, T value)
+        {
+            FieldInfo field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (field == null)
+            {
+                throw new InvalidOperationException("Field was not found: " + name);
+            }
+
+            field.SetValue(target, value);
         }
 
         private static void AssertEqual<T>(T expected, T actual, string label)
