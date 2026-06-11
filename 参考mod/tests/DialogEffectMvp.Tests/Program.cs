@@ -16,14 +16,15 @@ namespace MCS_AIChatMod.Tests
             failed += Run("ValidateAndClamp clamps severe insult", ValidateAndClampClampsSevereInsult);
             failed += Run("ValidateAndClamp rejects low-confidence event", ValidateAndClampRejectsLowConfidenceEvent);
             failed += Run("ValidateAndClamp accepts mixed-case impact level", ValidateAndClampAcceptsMixedCaseImpactLevel);
-            failed += Run("BuildFallbackEffect detects explicit insult and threat", BuildFallbackEffectDetectsExplicitInsultAndThreat);
+            failed += Run("BuildFallbackEffect escalates explicit severe insult and threat", BuildFallbackEffectEscalatesExplicitSevereInsultAndThreat);
             failed += Run("BuildFallbackEffect ignores ordinary conversation", BuildFallbackEffectIgnoresOrdinaryConversation);
             failed += Run("ApplyChatFavorGainCap caps positive gain at 60", ApplyChatFavorGainCapCapsPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap blocks positive gain at 60", ApplyChatFavorGainCapBlocksPositiveGainAtSixty);
             failed += Run("ApplyChatFavorGainCap keeps negative delta at 60", ApplyChatFavorGainCapKeepsNegativeDeltaAtSixty);
             failed += Run("Dialog battle trigger detects clear challenge reply", DialogBattleTriggerDetectsClearChallengeReply);
-            failed += Run("Dialog battle trigger ignores warning-only reply", DialogBattleTriggerIgnoresWarningOnlyReply);
+            failed += Run("Dialog battle trigger treats severe favor loss as battle event", DialogBattleTriggerTreatsSevereFavorLossAsBattleEvent);
             failed += Run("Dialog battle trigger requires severe insult attack", DialogBattleTriggerRequiresSevereInsultAttack);
+            failed += Run("BuildFallbackEffect treats severe defamation as severe battle event", BuildFallbackEffectTreatsSevereDefamationAsSevereBattleEvent);
             failed += Run("PromptBuilder resolves bundled card by npc id", PromptBuilderResolvesBundledCardByNpcId);
             failed += Run("PromptBuilder resolves bundled special card by npc name", PromptBuilderResolvesBundledSpecialCardByNpcName);
             failed += Run("PromptBuilder returns null for unknown bundled card", PromptBuilderReturnsNullForUnknownBundledCard);
@@ -95,14 +96,14 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(8, delta, "mixed-case impact level delta");
         }
 
-        private static void BuildFallbackEffectDetectsExplicitInsultAndThreat()
+        private static void BuildFallbackEffectEscalatesExplicitSevereInsultAndThreat()
         {
             object effect = BuildFallbackEffect("ni zhe zhong feiwu ye gan dang wo de lu? zai duo zui wo jiu rang ni shenbai minglie.", "dao you he bi ru ren?");
             int delta = ValidateAndClamp(effect);
 
             AssertEqual("insult_attack", GetField<string>(effect, "EffectType"), "fallback effect type");
-            AssertEqual("major", GetField<string>(effect, "ImpactLevel"), "fallback impact level");
-            AssertEqual(-10, delta, "fallback threat delta");
+            AssertEqual("severe", GetField<string>(effect, "ImpactLevel"), "fallback impact level");
+            AssertEqual(-25, delta, "fallback threat delta");
         }
 
         private static void BuildFallbackEffectIgnoresOrdinaryConversation()
@@ -143,12 +144,12 @@ namespace MCS_AIChatMod.Tests
             AssertEqual(true, shouldTrigger, "clear challenge should trigger battle");
         }
 
-        private static void DialogBattleTriggerIgnoresWarningOnlyReply()
+        private static void DialogBattleTriggerTreatsSevereFavorLossAsBattleEvent()
         {
             object effect = CreateEffect("insult_attack", "severe", -25, 0.95);
-            bool shouldTrigger = ShouldTriggerBattleAfterDialog("滚吧，我今日不与你计较。", effect, -25);
+            bool shouldTrigger = ShouldTriggerBattleAfterDialog("古兄慎言。倪某与你尚有情分，莫让口舌伤了和气。", effect, -25);
 
-            AssertEqual(false, shouldTrigger, "warning-only reply should not trigger battle");
+            AssertEqual(true, shouldTrigger, "severe favor loss should trigger battle without challenge keywords");
         }
 
         private static void DialogBattleTriggerRequiresSevereInsultAttack()
@@ -157,6 +158,16 @@ namespace MCS_AIChatMod.Tests
             bool shouldTrigger = ShouldTriggerBattleAfterDialog("既如此，战吧。", effect, -10);
 
             AssertEqual(false, shouldTrigger, "major insult should not trigger battle");
+        }
+
+        private static void BuildFallbackEffectTreatsSevereDefamationAsSevereBattleEvent()
+        {
+            object effect = BuildFallbackEffect("你勾结魔道，欺师灭祖，还要毁我全族名声。", "你此言太过。");
+            int delta = ValidateAndClamp(effect);
+
+            AssertEqual("insult_attack", GetField<string>(effect, "EffectType"), "severe defamation effect type");
+            AssertEqual("severe", GetField<string>(effect, "ImpactLevel"), "severe defamation impact level");
+            AssertEqual(-25, delta, "severe defamation delta");
         }
 
         private static void PromptBuilderResolvesBundledCardByNpcId()

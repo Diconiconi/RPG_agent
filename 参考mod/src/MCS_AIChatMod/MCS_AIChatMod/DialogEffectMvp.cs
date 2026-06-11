@@ -67,38 +67,28 @@ internal static class DialogEffectMvp
 		"miemen"
 	};
 
-	private static readonly string[] BattleChallengeKeywords = new[]
+	private static readonly string[] FallbackSevereConflictKeywords = new[]
 	{
-		"开战",
-		"战吧",
-		"一战",
-		"与你一战",
-		"与我一战",
-		"拔剑",
-		"亮剑",
-		"动手",
-		"出手",
-		"领教",
-		"讨教",
-		"休怪我",
-		"休怪在下",
-		"今日便教训你",
-		"今日便让你",
-		"手底下见真章",
-		"剑下见真章"
-	};
-
-	private static readonly string[] BattleRefusalKeywords = new[]
-	{
-		"不与你计较",
-		"懒得动手",
-		"不屑动手",
-		"不愿动手",
-		"今日饶你",
-		"滚吧",
-		"退下",
-		"莫要再说",
-		"休要再言"
+		"\u52fe\u7ed3\u9b54\u9053",
+		"\u9b54\u9053\u5978\u7ec6",
+		"\u6b3a\u5e08\u706d\u7956",
+		"\u5356\u5e08\u6c42\u8363",
+		"\u8fb1\u6ca1\u5e08\u95e8",
+		"\u5b97\u95e8\u8d25\u7c7b",
+		"\u8d25\u7c7b",
+		"\u5b7d\u755c",
+		"\u755c\u751f\u4e0d\u5982",
+		"\u72d7\u6742\u79cd",
+		"\u8eab\u8d25\u540d\u88c2",
+		"\u540d\u58f0\u626b\u5730",
+		"\u6bc1\u4f60\u540d\u58f0",
+		"\u6bc1\u6211\u5168\u65cf\u540d\u58f0",
+		"mo dao jian xi",
+		"modao jianxi",
+		"qishi miezu",
+		"qi shi mie zu",
+		"shenbai minglie",
+		"shenbaiminglie"
 	};
 
 	internal sealed class ParsedReply
@@ -252,13 +242,7 @@ internal static class DialogEffectMvp
 		{
 			return false;
 		}
-		string rawReply = (npcVisibleReply ?? string.Empty).ToLowerInvariant();
-		string compactReply = RemoveWhitespace(rawReply);
-		if (CountKeywordHits(rawReply, compactReply, BattleRefusalKeywords) > 0)
-		{
-			return false;
-		}
-		return CountKeywordHits(rawReply, compactReply, BattleChallengeKeywords) > 0;
+		return true;
 	}
 
 	private static Effect BuildFallbackEffect(string playerInput, string npcReply)
@@ -268,18 +252,19 @@ internal static class DialogEffectMvp
 		int insultHits = CountKeywordHits(rawText, compactText, FallbackInsultKeywords);
 		int threatHits = CountKeywordHits(rawText, compactText, FallbackThreatKeywords);
 		int severeThreatHits = CountKeywordHits(rawText, compactText, FallbackSevereThreatKeywords);
-		if (insultHits <= 0 && threatHits <= 0 && severeThreatHits <= 0)
+		int severeConflictHits = CountKeywordHits(rawText, compactText, FallbackSevereConflictKeywords);
+		if (insultHits <= 0 && threatHits <= 0 && severeThreatHits <= 0 && severeConflictHits <= 0)
 		{
 			return new Effect();
 		}
-		if (severeThreatHits > 0)
+		if (severeThreatHits > 0 || severeConflictHits > 0)
 		{
 			return new Effect
 			{
 				EffectType = "insult_attack",
 				ImpactLevel = "severe",
 				FavorDelta = -25,
-				Reason = "local fallback detected explicit lethal threat",
+				Reason = "local fallback detected severe conflict",
 				AngerDelta = 25,
 				Confidence = 0.9
 			};
