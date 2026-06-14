@@ -236,6 +236,7 @@ public class AIChatManager : BaseUnityPlugin
 		managerObject.AddComponent<AIQuestManager>();
 		Harmony.CreateAndPatchAll(typeof(NpcInfoPatch), (string)null);
 		Harmony.CreateAndPatchAll(typeof(OnJiaoTanBtnClickPatch), (string)null);
+		Harmony.CreateAndPatchAll(typeof(OnLiaoTianClickPatch), (string)null);
 		Harmony.CreateAndPatchAll(typeof(ToolsCanClickPatch), (string)null);
 		Harmony.CreateAndPatchAll(typeof(BaseMapCompontCanClickPatch), (string)null);
 		try
@@ -427,10 +428,13 @@ public class AIChatManager : BaseUnityPlugin
 		NPCDialog.Instance.StartDialogWithNPC(npcInfo.NpcID.ToString(), npcInfo.Name);
 		_previousNpcId = newNpcId;
 		Logger.LogInfo((object)("[StartChatWithNpc] 对话已启动: " + npcInfo.Name));
-		UIManager.Instance?.ShowChatPanel(npcInfo.Name ?? "NPC");
+		if (UIManager.Instance != null && UIManager.Instance.IsChatPanelVisible())
+		{
+			UIManager.Instance.ShowChatPanel(npcInfo.Name ?? "NPC");
+		}
 	}
 
-	public static async Task<string> GetAIResponseAsync(string input)
+	public static async Task<string> GetAIResponseAsync(string input, string dialogTimeContext = null)
 	{
 		if (npcInfo == null || npcInfo.NpcID <= 0)
 		{
@@ -457,6 +461,7 @@ public class AIChatManager : BaseUnityPlugin
 			SetLastChatRoundTokenUsage(null);
 			TokenUsage roundTokenUsage = new TokenUsage();
 			NPCChatTools.RemoveTransientToolInstructions(Messages);
+			NPCDialog.UpsertPromptTimeContext(Messages, dialogTimeContext ?? NPCDialog.BuildPromptTimeContextForNpc(npcInfo.NpcID, npcInfo.Name));
 			NPCChatTools.EnsureToolInstruction(Messages);
 			Messages.Add(new ChatMessage("user", input));
 			ChatRequest request = new ChatRequest

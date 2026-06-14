@@ -246,8 +246,12 @@ public static class PromptBuilder
 		int recentDialogCount = Mathf.Clamp(ConfigManager.recentDialogCount.Value, 4, 30);
 		int longTermSummaryCount = Mathf.Clamp(ConfigManager.longTermSummaryCount.Value, 2, 30);
 		int maxCharsPerEntry = Mathf.Clamp(ConfigManager.longTermMaxCharsPerEntry.Value, 20, 200);
-		if (NPCDialog.TryBuildPromptHistory(npcInfo.NpcID, npcInfo.Name, recentDialogCount, longTermSummaryCount, maxCharsPerEntry, out var longTermSummary, out var recentDialog))
+		if (NPCDialog.TryBuildPromptHistory(npcInfo.NpcID, npcInfo.Name, recentDialogCount, longTermSummaryCount, maxCharsPerEntry, out var longTermSummary, out var recentDialog, out var promptTimeContext))
 		{
+			if (!string.IsNullOrEmpty(promptTimeContext))
+			{
+				initMessages.Add(new ChatMessage("system", NPCDialog.PromptTimeContextMarker + "\n" + promptTimeContext));
+			}
 			if (!string.IsNullOrEmpty(longTermSummary))
 			{
 				initMessages.Add(new ChatMessage("user", "以下是你与玩家早期互动的长期记忆摘要，仅供保持关系与事件一致性：\n" + longTermSummary));

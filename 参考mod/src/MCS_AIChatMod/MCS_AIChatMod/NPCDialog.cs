@@ -4,10 +4,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using BepInEx.Logging;
+using Fungus;
 using KBEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace MCS_AIChatMod;
 
@@ -54,6 +56,8 @@ public class NPCDialog : MonoBehaviour
 	}
 
 	public const string LegacyDefaultGameTimeText = "0001年01月01日";
+
+	internal const string PromptTimeContextMarker = "[DialogTimeContext]";
 
 	private List<DialogEntry> dialogHistory = new List<DialogEntry>();
 
@@ -111,26 +115,68 @@ public class NPCDialog : MonoBehaviour
 
 	public async void OnUISendMessage(string inputText)
 	{
-		if (string.IsNullOrEmpty(inputText))
-		{
-			return;
-		}
-		DialogEntry playerEntry = AddDialogEntry("你", inputText, null, QuestStorySpeakerType.Player);
-		UIManager.Instance?.AppendMessage("你", inputText, isPlayer: true, playerEntry.gameTimeText, playerEntry.tokenUsageText, QuestStorySpeakerType.Player);
-		UIManager.Instance?.SetInputText("正在思考...");
-		UIManager.Instance?.SetInputInteractable(interactable: false);
+		await SendMessageInternalAsync(inputText, appendToChatPanel: true, showImmersiveReply: false);
+	}
+
+	public async void OnImmersiveSendMessage(string inputText)
+	{
+		bool reopenInput = false;
 		try
 		{
-			string aiResponse = await AIChatManager.GetAIResponseAsync(inputText);
+			reopenInput = await SendMessageInternalAsync(inputText, appendToChatPanel: UIManager.Instance?.IsChatPanelVisible() == true, showImmersiveReply: true);
+		}
+		finally
+		{
+			UIManager.Instance?.FinishImmersiveFreeInputRound(reopenInput);
+		}
+	}
+
+	private async System.Threading.Tasks.Task<bool> SendMessageInternalAsync(string inputText, bool appendToChatPanel, bool showImmersiveReply)
+	{
+		if (string.IsNullOrEmpty(inputText))
+		{
+			return false;
+		}
+		string promptTimeContext = BuildPromptTimeContextForNpc(npcInfo?.NpcID ?? 0, npcInfo?.Name);
+		DialogEntry playerEntry = AddDialogEntry("你", inputText, null, QuestStorySpeakerType.Player);
+		if (appendToChatPanel)
+		{
+			UIManager.Instance?.AppendMessage("你", inputText, isPlayer: true, playerEntry.gameTimeText, playerEntry.tokenUsageText, QuestStorySpeakerType.Player);
+			UIManager.Instance?.SetInputText("正在思考...");
+			UIManager.Instance?.SetInputInteractable(interactable: false);
+		}
+		else
+		{
+			UIManager.Instance?.MarkChatHistoryDirty();
+		}
+		try
+		{
+			string aiResponse = await AIChatManager.GetAIResponseAsync(inputText, promptTimeContext);
 			string speakerName = npcInfo?.Name ?? "NPC";
 			int currentNpcId = npcInfo?.NpcID ?? 0;
 			DialogEffectMvp.ParsedReply parsedReply = DialogEffectMvp.ParseReply(aiResponse);
 			aiResponse = parsedReply.VisibleText;
+			if (string.IsNullOrWhiteSpace(aiResponse))
+			{
+				aiResponse = "对方沉默不语。";
+			}
 			string tokenUsageText = AIChatManager.BuildLastChatRoundTokenUsageText();
 			DialogEntry npcEntry = AddDialogEntry(speakerName, aiResponse, tokenUsageText, QuestStorySpeakerType.Npc);
-			UIManager.Instance?.AppendMessage(speakerName, aiResponse, isPlayer: false, npcEntry.gameTimeText, npcEntry.tokenUsageText, QuestStorySpeakerType.Npc);
+			if (appendToChatPanel)
+			{
+				UIManager.Instance?.AppendMessage(speakerName, aiResponse, isPlayer: false, npcEntry.gameTimeText, npcEntry.tokenUsageText, QuestStorySpeakerType.Npc);
+			}
+			else
+			{
+				UIManager.Instance?.MarkChatHistoryDirty();
+			}
 			DialogEffectMvp.Effect effect = DialogEffectMvp.ResolveEffectForApplication(inputText, aiResponse, parsedReply.Effect);
 			bool shouldTriggerBattle = DialogEffectMvp.ShouldTriggerBattleAfterDialogForDialog(currentNpcId, aiResponse, effect);
+			bool shouldReopenInput = ShouldReopenImmersiveInputAfterReply(showImmersiveReply, shouldTriggerBattle);
+			if (showImmersiveReply)
+			{
+				await ShowNativeNpcReplyAsync(currentNpcId, aiResponse);
+			}
 			int appliedDelta;
 			bool applied = shouldTriggerBattle
 				? DialogEffectMvp.TryApplyWithoutFeedback(currentNpcId, speakerName, effect, out appliedDelta)
@@ -139,19 +185,114 @@ public class NPCDialog : MonoBehaviour
 			{
 				DialogEffectMvp.TryTriggerBattleAfterDialog(currentNpcId, speakerName, aiResponse, effect, appliedDelta);
 			}
+			return shouldReopenInput;
 		}
 		catch (Exception ex)
 		{
-			Exception ex2 = ex;
-			string errorMsg = "出错了: " + ex2.Message;
-			UIManager.Instance?.AppendMessage("系统", errorMsg, isPlayer: false);
-			AIChatManager.logger.LogError((object)$"[NPCDialog] SendMessage error: {ex2}");
+			string errorMsg = "出错了: " + ex.Message;
+			if (showImmersiveReply)
+			{
+				await ShowNativeNpcReplyAsync(npcInfo?.NpcID ?? 0, errorMsg);
+			}
+			else
+			{
+				UIManager.Instance?.AppendMessage("系统", errorMsg, isPlayer: false);
+			}
+			AIChatManager.logger.LogError((object)$"[NPCDialog] SendMessage error: {ex}");
+			return showImmersiveReply;
 		}
 		finally
 		{
-			UIManager.Instance?.SetInputText("");
-			UIManager.Instance?.SetInputInteractable(interactable: true);
+			if (appendToChatPanel)
+			{
+				UIManager.Instance?.SetInputText("");
+				UIManager.Instance?.SetInputInteractable(interactable: true);
+			}
 		}
+	}
+
+	private static bool ShouldReopenImmersiveInputAfterReply(bool showImmersiveReply, bool shouldTriggerBattle)
+	{
+		return showImmersiveReply && !shouldTriggerBattle;
+	}
+
+	private static bool ShouldReopenImmersiveInputAfterReplyForTest(bool showImmersiveReply, bool shouldTriggerBattle)
+	{
+		return ShouldReopenImmersiveInputAfterReply(showImmersiveReply, shouldTriggerBattle);
+	}
+
+	private async System.Threading.Tasks.Task ShowNativeNpcReplyAsync(int npcId, string text)
+	{
+		NPCInfo targetNpcInfo = npcInfo;
+		if ((targetNpcInfo == null || targetNpcInfo.NpcID != npcId) && npcId > 0)
+		{
+			targetNpcInfo = NpcDataExtractor.ExtractFromGameMemory(npcId) ?? new NPCInfo
+			{
+				NpcID = npcId,
+				Name = QuestElementPicker.GetNpcDisplayName(npcId)
+			};
+		}
+
+		bool shown = await NativeDialogPresenter.TryShowNpcReplyAsync(targetNpcInfo, text, AIChatManager.logger);
+		if (shown)
+		{
+			return;
+		}
+
+		UIManager.Instance?.AppendMessage(targetNpcInfo?.Name ?? "NPC", text, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), null, QuestStorySpeakerType.Npc);
+	}
+
+	private System.Threading.Tasks.Task ShowImmersiveNpcReplyAsync(int npcId, string text)
+	{
+		System.Threading.Tasks.TaskCompletionSource<bool> tcs = new System.Threading.Tasks.TaskCompletionSource<bool>();
+		try
+		{
+			UINPCLiaoTian liaoTian = UINPCLiaoTian.Inst ?? UINPCJiaoHu.Inst?.LiaoTian;
+			if (liaoTian != null && npcId > 0)
+			{
+				liaoTian.ShowTalk(npcId, text, new UnityAction(delegate
+				{
+					tcs.TrySetResult(true);
+				}));
+				return tcs.Task;
+			}
+			SayDialog sayDialog = SayDialog.GetSayDialog();
+			if (sayDialog != null)
+			{
+				sayDialog.SetActive(state: true);
+				if (npcId > 0)
+				{
+					sayDialog.SetCharacter(null, npcId);
+					sayDialog.SetCharacterImage(null, npcId);
+				}
+				else
+				{
+					sayDialog.SetCharacter(null, 0);
+					sayDialog.SetCharacterImage(null, 0);
+				}
+				sayDialog.FadeWhenDone = false;
+				sayDialog.Say(text, clearPrevious: true, waitForInput: true, fadeWhenDone: false, stopVoiceover: true, waitForVO: false, null, delegate
+				{
+					try
+					{
+						sayDialog.Clear();
+						sayDialog.SetActive(state: false);
+					}
+					catch
+					{
+					}
+					tcs.TrySetResult(true);
+				});
+				return tcs.Task;
+			}
+		}
+		catch (Exception ex)
+		{
+			AIChatManager.logger.LogWarning((object)("[NPCDialog] 原生对话框展示失败: " + ex.Message));
+		}
+		UIManager.Instance?.AppendMessage(npcInfo?.Name ?? "NPC", text, isPlayer: false, NPCDialog.GetCurrentGameTimeTextOrDefault(), null, QuestStorySpeakerType.Npc);
+		tcs.TrySetResult(true);
+		return tcs.Task;
 	}
 
 	public void ClearHistory()
@@ -503,12 +644,39 @@ public class NPCDialog : MonoBehaviour
 		return BuildLongTermMemorySummary(dialogHistory, keepRecentCount, maxSummaryEntries, maxCharsPerEntry);
 	}
 
-	internal static bool TryBuildPromptHistory(int npcId, string npcName, int recentDialogCount, int longTermSummaryCount, int maxCharsPerEntry, out string longTermSummary, out List<string> recentDialog)
+	internal static bool TryBuildPromptHistory(int npcId, string npcName, int recentDialogCount, int longTermSummaryCount, int maxCharsPerEntry, out string longTermSummary, out List<string> recentDialog, out string promptTimeContext)
 	{
 		List<DialogEntry> historyEntries = LoadDialogHistoryEntries(Application.persistentDataPath, npcId, npcName);
 		longTermSummary = BuildLongTermMemorySummary(historyEntries, recentDialogCount, longTermSummaryCount, maxCharsPerEntry);
 		recentDialog = GetRecentDialogHistory(historyEntries, recentDialogCount);
+		promptTimeContext = BuildPromptTimeContext(historyEntries);
 		return historyEntries.Count > 0;
+	}
+
+	internal static string BuildPromptTimeContextForNpc(int npcId, string npcName)
+	{
+		if (npcId <= 0 || string.IsNullOrWhiteSpace(npcName))
+		{
+			return BuildPromptTimeContext(null);
+		}
+		return BuildPromptTimeContext(LoadDialogHistoryEntries(Application.persistentDataPath, npcId, npcName));
+	}
+
+	internal static void UpsertPromptTimeContext(List<ChatMessage> messages, string promptTimeContext)
+	{
+		if (messages == null || string.IsNullOrWhiteSpace(promptTimeContext))
+		{
+			return;
+		}
+		string content = PromptTimeContextMarker + "\n" + promptTimeContext.Trim();
+		int existingIndex = messages.FindIndex((ChatMessage message) => message != null && string.Equals(message.Role, "system", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(message.Content) && message.Content.StartsWith(PromptTimeContextMarker, StringComparison.Ordinal));
+		if (existingIndex >= 0)
+		{
+			messages[existingIndex].Content = content;
+			return;
+		}
+		int insertIndex = messages.FindIndex((ChatMessage message) => message != null && string.Equals(message.Role, "system", StringComparison.OrdinalIgnoreCase));
+		messages.Insert(insertIndex >= 0 ? insertIndex + 1 : 0, new ChatMessage("system", content));
 	}
 
 	public List<DialogHistoryEntryView> GetDialogHistoryEntries()
@@ -566,7 +734,7 @@ public class NPCDialog : MonoBehaviour
 			return new List<string>();
 		}
 		return (from entry in historyEntries.Skip(Math.Max(0, historyEntries.Count - count))
-			select entry.speaker + ": " + entry.message).ToList();
+			select FormatPromptHistoryLine(entry)).ToList();
 	}
 
 	private static string BuildLongTermMemorySummary(List<DialogEntry> historyEntries, int keepRecentCount, int maxSummaryEntries, int maxCharsPerEntry)
@@ -585,9 +753,83 @@ public class NPCDialog : MonoBehaviour
 			{
 				text = text.Substring(0, maxCharsPerEntry) + "…";
 			}
-			return "- " + entry.speaker + ": " + text;
+			return "- " + FormatPromptHistoryLine(entry, text);
 		});
 		return string.Join("\n", longTermEntries);
+	}
+
+	private static string FormatPromptHistoryLine(DialogEntry entry, string messageOverride = null)
+	{
+		string timeText = NormalizeGameTimeTextValue(entry?.gameTimeText);
+		string speaker = string.IsNullOrWhiteSpace(entry?.speaker) ? "NPC" : entry.speaker;
+		string message = messageOverride ?? entry?.message ?? string.Empty;
+		return "[" + timeText + "] " + speaker + ": " + message;
+	}
+
+	private static string BuildPromptTimeContext(List<DialogEntry> historyEntries)
+	{
+		string currentGameTimeText = NormalizeGameTimeTextValue(GetCurrentGameTimeTextOrDefault());
+		DialogEntry lastEntry = historyEntries?.LastOrDefault((DialogEntry entry) => entry != null && !string.IsNullOrWhiteSpace(entry.message));
+		string lastGameTimeText = lastEntry == null ? string.Empty : NormalizeGameTimeTextValue(lastEntry.gameTimeText);
+		return BuildPromptTimeContext(lastGameTimeText, currentGameTimeText);
+	}
+
+	private static string BuildPromptTimeContext(string lastGameTimeText, string currentGameTimeText)
+	{
+		string currentText = NormalizeGameTimeTextValue(currentGameTimeText);
+		string normalizedLast = NormalizeGameTimeTextValue(lastGameTimeText);
+		if (!HasReliableDialogGameTime(normalizedLast))
+		{
+			return "当前游戏时间：" + currentText + "\n上一次对话时间：暂无可靠记录。\n距离上一次对话：未知。\n请根据当前时间自然回应；不要默认上一句刚刚发生。";
+		}
+		return "当前游戏时间：" + currentText + "\n上一次对话时间：" + normalizedLast + "\n距离上一次对话：" + DescribeDialogElapsedTime(normalizedLast, currentText) + "\n请根据这段时间间隔调整寒暄、记忆和语气；如果间隔较久，不要假装刚刚接着上句话。";
+	}
+
+	private static bool HasReliableDialogGameTime(string gameTimeText)
+	{
+		string normalized = NormalizeGameTimeTextValue(gameTimeText);
+		return !string.IsNullOrWhiteSpace(normalized) && !string.Equals(normalized, NormalizeGameTimeTextValue(LegacyDefaultGameTimeText), StringComparison.Ordinal);
+	}
+
+	private static string DescribeDialogElapsedTime(string lastGameTimeText, string currentGameTimeText)
+	{
+		if (!TryParseGameDate(lastGameTimeText, out var lastGameDate) || !TryParseGameDate(currentGameTimeText, out var currentGameDate))
+		{
+			return "未知";
+		}
+		int days = Math.Max(0, (currentGameDate - lastGameDate).Days);
+		if (days <= 0)
+		{
+			return "同日";
+		}
+		int years = days / 365;
+		days %= 365;
+		int months = days / 30;
+		days %= 30;
+		List<string> parts = new List<string>();
+		if (years > 0)
+		{
+			parts.Add(years + "年");
+		}
+		if (months > 0)
+		{
+			parts.Add(months + "个月");
+		}
+		if (days > 0 || parts.Count == 0)
+		{
+			parts.Add(days + "天");
+		}
+		return string.Join(string.Empty, parts);
+	}
+
+	private static string DescribeDialogElapsedTimeForTest(string lastGameTimeText, string currentGameTimeText)
+	{
+		return DescribeDialogElapsedTime(lastGameTimeText, currentGameTimeText);
+	}
+
+	private static string BuildPromptTimeContextForTest(string lastGameTimeText, string currentGameTimeText)
+	{
+		return BuildPromptTimeContext(lastGameTimeText, currentGameTimeText);
 	}
 
 	private void SaveDialogEntry(int npcId, string npcName, DialogEntry entry)

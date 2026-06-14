@@ -116,6 +116,24 @@ public class UIManager : MonoBehaviour
 
 	private ScrollRect _friendScroll;
 
+	private GameObject _freeInputOptionOverlay;
+
+	private GameObject _immersiveInputPanel;
+
+	private InputField _immersiveInputField;
+
+	private Button _immersiveSubmitBtn;
+
+	private Coroutine _freeInputOptionCoroutine;
+
+	private Coroutine _immersiveReopenCoroutine;
+
+	private bool _immersiveInputBusy = false;
+
+	private bool _chatHistoryDirty = false;
+
+	private float _freeInputOptionOverlayExpireRealtime = -1f;
+
 	private bool _isFirstTimeSetup = false;
 
 	private int _currentNpcId = -1;
@@ -136,29 +154,41 @@ public class UIManager : MonoBehaviour
 
 	private const string EXPERIMENTAL_MAINLINE_WARNING_MESSAGE = "该功能处于极早期的开发阶段，有可能造成坏档、死档等风险，请谨慎开启。";
 
-	private static readonly Color PANEL_COLOR = new Color(0.16f, 0.16f, 0.2f, 0.65f);
+	private static readonly Color PANEL_COLOR = new Color(0.03f, 0.17f, 0.18f, 0.86f);
 
-	private static readonly Color HEADER_COLOR = new Color(0.1f, 0.1f, 0.13f, 1f);
+	private static readonly Color HEADER_COLOR = new Color(0.02f, 0.12f, 0.14f, 0.96f);
 
-	private static readonly Color INPUT_BG = new Color(0.22f, 0.22f, 0.28f, 1f);
+	private static readonly Color INPUT_BG = new Color(0.05f, 0.22f, 0.23f, 0.96f);
 
-	private static readonly Color BTN_COLOR = new Color(0.28f, 0.5f, 0.85f, 1f);
+	private static readonly Color BTN_COLOR = new Color(0.08f, 0.42f, 0.4f, 0.98f);
 
-	private static readonly Color BTN_DANGER = new Color(0.85f, 0.3f, 0.3f, 1f);
+	private static readonly Color BTN_DANGER = new Color(0.72f, 0.22f, 0.2f, 0.98f);
 
-	private static readonly Color BTN_SECONDARY = new Color(0.3f, 0.3f, 0.36f, 1f);
+	private static readonly Color BTN_SECONDARY = new Color(0.08f, 0.27f, 0.28f, 0.96f);
 
-	private static readonly Color TEXT_PRIMARY = new Color(0.92f, 0.92f, 0.95f, 1f);
+	private static readonly Color TEXT_PRIMARY = new Color(0.86f, 0.94f, 0.84f, 1f);
 
-	private static readonly Color TEXT_SECONDARY = new Color(0.6f, 0.62f, 0.68f, 1f);
+	private static readonly Color TEXT_SECONDARY = new Color(0.62f, 0.75f, 0.68f, 1f);
 
-	private static readonly Color PLAYER_BUBBLE = new Color(0.15f, 0.35f, 0.65f, 0.85f);
+	private static readonly Color PLAYER_BUBBLE = new Color(0.08f, 0.34f, 0.43f, 0.88f);
 
-	private static readonly Color NPC_BUBBLE = new Color(0.22f, 0.22f, 0.28f, 0.85f);
+	private static readonly Color NPC_BUBBLE = new Color(0.04f, 0.22f, 0.23f, 0.88f);
 
-	private static readonly Color NARRATOR_BUBBLE = new Color(0.18f, 0.18f, 0.18f, 0.65f);
+	private static readonly Color NARRATOR_BUBBLE = new Color(0.13f, 0.16f, 0.14f, 0.78f);
 
-	private static readonly Color LIST_ITEM_HOVER = new Color(0.28f, 0.5f, 0.85f, 0.4f);
+	private static readonly Color LIST_ITEM_HOVER = new Color(0.18f, 0.43f, 0.38f, 0.48f);
+
+	private static readonly Color GAME_TEAL = new Color(0.05f, 0.31f, 0.31f, 0.88f);
+
+	private static readonly Color GAME_TEAL_DARK = new Color(0.03f, 0.2f, 0.21f, 0.94f);
+
+	private static readonly Color GAME_GOLD = new Color(0.72f, 0.58f, 0.28f, 0.9f);
+
+	private static readonly Color GAME_TEXT = new Color(0.82f, 0.92f, 0.82f, 1f);
+
+	private static readonly Color GAME_PARCHMENT = new Color(0.74f, 0.78f, 0.64f, 0.88f);
+
+	private static readonly Color GAME_INK = new Color(0.05f, 0.22f, 0.24f, 1f);
 
 	private static readonly string[] QUEST_LOADING_STAGE_NAMES = new string[5] { "整理任务素材", "构建任务提示词", "连接模型服务", "生成任务内容", "校验并写入任务" };
 
@@ -240,13 +270,15 @@ public class UIManager : MonoBehaviour
 			BuildFriendListPanel();
 			BuildModConfigPanel();
 			BuildModelConfigPanel();
-			BuildDonatePanel();
 			BuildMainlineExperimentalWarningPanel();
+			BuildImmersiveFreeInputControls();
 			_chatPanel.SetActive(value: false);
 			_settingsPanel.SetActive(value: false);
 			_modConfigPanel.SetActive(value: false);
 			_modelConfigPanel.SetActive(value: false);
 			_mainlineExperimentalWarningPanel.SetActive(value: false);
+			_freeInputOptionOverlay.SetActive(value: false);
+			_immersiveInputPanel.SetActive(value: false);
 			AIChatManager.logger.LogInfo((object)"[UIManager] UI 构建完成");
 		}
 		catch (Exception arg)
@@ -265,7 +297,15 @@ public class UIManager : MonoBehaviour
 		{
 			HideChatPanel();
 		}
-		if (!Input.GetKeyDown(KeyCode.B) || (_inputField != null && _inputField.isFocused) || IsGameDialogActive())
+		if (_freeInputOptionOverlay != null && _freeInputOptionOverlay.activeSelf && _freeInputOptionOverlayExpireRealtime > 0f && Time.unscaledTime > _freeInputOptionOverlayExpireRealtime && !IsMenuDialogActive())
+		{
+			_freeInputOptionOverlay.SetActive(value: false);
+		}
+		if (_immersiveInputPanel != null && _immersiveInputPanel.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+		{
+			HideImmersiveFreeInput();
+		}
+		if (!Input.GetKeyDown(KeyCode.B) || (_inputField != null && _inputField.isFocused) || (_immersiveInputField != null && _immersiveInputField.isFocused) || IsGameDialogActive())
 		{
 			return;
 		}
@@ -330,9 +370,10 @@ public class UIManager : MonoBehaviour
 			_titleText.text = (string.IsNullOrEmpty(npcName) ? "对话中" : ("与 " + npcName + " 对话中"));
 		}
 		int newNpcId = AIChatManager.npcInfo?.NpcID ?? (-1);
-		if (_currentNpcId != newNpcId && newNpcId > 0)
+		if ((_currentNpcId != newNpcId || _chatHistoryDirty) && newNpcId > 0)
 		{
 			_currentNpcId = newNpcId;
+			_chatHistoryDirty = false;
 			ClearMessages();
 			ReloadChatHistory();
 			AIChatManager.logger.LogInfo((object)$"[UIManager] NPC 切换到 {npcName} (ID:{newNpcId})，已重新加载对话历史");
@@ -401,6 +442,29 @@ public class UIManager : MonoBehaviour
 		return false;
 	}
 
+	private bool IsMenuDialogActive()
+	{
+		try
+		{
+			MenuDialog menuDialog = MenuDialog.GetMenuDialog();
+			return menuDialog != null && menuDialog.gameObject.activeInHierarchy;
+		}
+		catch (Exception arg)
+		{
+			ManualLogSource logger = AIChatManager.logger;
+			if (logger != null)
+			{
+				logger.LogWarning((object)$"[UIManager] IsMenuDialogActive failed: {arg}");
+			}
+		}
+		return false;
+	}
+
+	public void MarkChatHistoryDirty()
+	{
+		_chatHistoryDirty = true;
+	}
+
 	public bool IsPointerOverModUI()
 	{
 		if (_graphicRaycaster == null || EventSystem.current == null)
@@ -430,17 +494,19 @@ public class UIManager : MonoBehaviour
 				QuestStorySpeakerType.Player => PLAYER_BUBBLE,
 				_ => NPC_BUBBLE,
 			};
+			AddGameOutline(entryGO, new Color(0.44f, 0.36f, 0.17f, 0.45f), new Vector2(1f, -1f));
 			VerticalLayoutGroup layout = entryGO.AddComponent<VerticalLayoutGroup>();
-			layout.padding = new RectOffset(12, 12, 8, 8);
+			layout.padding = new RectOffset(14, 14, 9, 9);
+			layout.spacing = 2f;
 			layout.childForceExpandWidth = true;
 			layout.childForceExpandHeight = false;
 			ContentSizeFitter fitter = entryGO.AddComponent<ContentSizeFitter>();
 			fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 			Color speakerColor = resolvedSpeakerType switch
 			{
-				QuestStorySpeakerType.Narrator => new Color(0.85f, 0.85f, 0.85f),
-				QuestStorySpeakerType.Player => new Color(0.7f, 0.9f, 1f),
-				_ => new Color(1f, 0.85f, 0.5f),
+				QuestStorySpeakerType.Narrator => new Color(0.82f, 0.84f, 0.72f),
+				QuestStorySpeakerType.Player => new Color(0.72f, 0.94f, 0.92f),
+				_ => new Color(0.96f, 0.82f, 0.46f),
 			};
 			CreateText(entryGO.transform, speaker, 14, speakerColor, FontStyle.Bold);
 			string metaText = string.Empty;
@@ -456,7 +522,7 @@ public class UIManager : MonoBehaviour
 			{
 				CreateText(entryGO.transform, metaText, 11, TEXT_SECONDARY);
 			}
-			CreateText(entryGO.transform, message, 15, Color.white);
+			CreateText(entryGO.transform, message, 15, new Color(0.95f, 0.98f, 0.9f, 1f));
 			Canvas.ForceUpdateCanvases();
 			if (_chatScroll != null)
 			{
@@ -534,35 +600,28 @@ public class UIManager : MonoBehaviour
 	private void BuildChatPanel()
 	{
 		_chatPanel = MakePanel(_canvasGO.transform, "ChatPanel", 860f, 810f, PANEL_COLOR);
+		AddGameOutline(_chatPanel, GAME_GOLD, new Vector2(2f, -2f));
 		RectTransform chatRT = _chatPanel.GetComponent<RectTransform>();
 		Vector2 anchorMin = (chatRT.anchorMax = new Vector2(0.5f, 0.5f));
 		chatRT.anchorMin = anchorMin;
 		chatRT.anchoredPosition = new Vector2(-170f, 0f);
 		GameObject header = MakePanel(_chatPanel.transform, "Header", 0f, 48f, HEADER_COLOR);
 		StretchTop(header, 48f);
+		AddGameOutline(header, GAME_GOLD, new Vector2(0f, -1f));
 		header.AddComponent<UIDragger>().target = chatRT;
 		_titleText = CreateText(header.transform, "对话中", 18, TEXT_PRIMARY);
-		StretchFill(_titleText.gameObject, 15f, 0f, -240f, 0f);
+		StretchFill(_titleText.gameObject, 18f, 0f, -150f, 0f);
 		_titleText.alignment = TextAnchor.MiddleLeft;
-		Button donateBtn = MakeButton(header.transform, "打赏作者", 92f, 34f, new Color(0.85f, 0.65f, 0.13f, 1f));
-		AnchorRight(donateBtn, -186f, 92f, 34f);
-		donateBtn.onClick.AddListener(delegate
-		{
-			if (_donatePanel != null)
-			{
-				_donatePanel.SetActive(value: true);
-			}
-		});
-		Button modCfgBtn = MakeButton(header.transform, "Mod配置", 80f, 34f, new Color(0.45f, 0.35f, 0.7f, 1f));
+		Button modCfgBtn = MakeButton(header.transform, "Mod配置", 80f, 34f, BTN_SECONDARY);
 		AnchorRight(modCfgBtn, -90f, 80f, 34f);
 		modCfgBtn.onClick.AddListener(ToggleModConfig);
 		Button closeBtn = MakeButton(header.transform, "X", 38f, 34f, BTN_DANGER);
 		AnchorRight(closeBtn, -44f, 38f, 34f);
 		closeBtn.onClick.AddListener(HideChatPanel);
-		GameObject toolbar = MakePanel(_chatPanel.transform, "Toolbar", 0f, 38f, new Color(0.14f, 0.14f, 0.17f));
-		StretchTopBelow(toolbar, 48f, 38f);
+		GameObject toolbar = MakePanel(_chatPanel.transform, "Toolbar", 0f, 42f, new Color(0.04f, 0.2f, 0.21f, 0.92f));
+		StretchTopBelow(toolbar, 48f, 42f);
 		HorizontalLayoutGroup tbLayout = toolbar.AddComponent<HorizontalLayoutGroup>();
-		tbLayout.padding = new RectOffset(10, 10, 3, 3);
+		tbLayout.padding = new RectOffset(12, 12, 5, 5);
 		tbLayout.spacing = 10f;
 		tbLayout.childAlignment = TextAnchor.MiddleLeft;
 		tbLayout.childForceExpandWidth = false;
@@ -570,21 +629,27 @@ public class UIManager : MonoBehaviour
 		clearBtn.onClick.AddListener(OnClearHistory);
 		Button cardBtn = MakeLayoutButton(toolbar.transform, "角色卡", 90f, 30f, BTN_SECONDARY);
 		cardBtn.onClick.AddListener(OnOpenCharacterCard);
-		Button eventsBtn = MakeLayoutButton(toolbar.transform, "生平", 80f, 30f, new Color(0.55f, 0.35f, 0.7f, 1f));
+		Button eventsBtn = MakeLayoutButton(toolbar.transform, "生平", 80f, 30f, BTN_SECONDARY);
 		eventsBtn.onClick.AddListener(OnShowNpcEvents);
-		Button friendBtn = MakeLayoutButton(toolbar.transform, "好友", 80f, 30f, new Color(0.35f, 0.55f, 0.7f, 1f));
+		Button friendBtn = MakeLayoutButton(toolbar.transform, "好友", 80f, 30f, BTN_SECONDARY);
 		friendBtn.onClick.AddListener(OnShowFriendList);
-		float scrollTop = 86f;
+		float scrollTop = 90f;
 		float scrollBottom = 56f;
 		BuildScrollArea(_chatPanel.transform, scrollTop, scrollBottom);
-		GameObject inputBar = MakePanel(_chatPanel.transform, "InputBar", 0f, scrollBottom, new Color(0.14f, 0.14f, 0.17f));
+		GameObject inputBar = MakePanel(_chatPanel.transform, "InputBar", 0f, scrollBottom, new Color(0.03f, 0.17f, 0.18f, 0.96f));
+		AddGameOutline(inputBar, new Color(0.52f, 0.43f, 0.2f, 0.7f), new Vector2(0f, 1f));
 		StretchBottom(inputBar, scrollBottom);
 		HorizontalLayoutGroup ibLayout = inputBar.AddComponent<HorizontalLayoutGroup>();
-		ibLayout.padding = new RectOffset(10, 10, 8, 8);
-		ibLayout.spacing = 8f;
+		ibLayout.padding = new RectOffset(12, 12, 9, 9);
+		ibLayout.spacing = 10f;
 		ibLayout.childForceExpandHeight = true;
 		_inputField = MakeInputField(inputBar.transform, "在这里输入消息...", 0f, 0f);
-		_inputField.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+		StyleInputField(_inputField, INPUT_BG, TEXT_PRIMARY, TEXT_SECONDARY);
+		LayoutElement mainInputLayout = _inputField.gameObject.GetComponent<LayoutElement>();
+		if (mainInputLayout != null)
+		{
+			mainInputLayout.flexibleWidth = 1f;
+		}
 		_inputField.onEndEdit.AddListener(OnInputEndEdit);
 		_sendBtn = MakeLayoutButton(inputBar.transform, "发送", 80f, 0f, BTN_COLOR);
 		_sendBtn.onClick.AddListener(OnSendMessage);
@@ -595,7 +660,8 @@ public class UIManager : MonoBehaviour
 		GameObject scrollGO = new GameObject("ChatScrollView");
 		scrollGO.transform.SetParent(parent, worldPositionStays: false);
 		Image scrollBg = scrollGO.AddComponent<Image>();
-		scrollBg.color = new Color(0.13f, 0.13f, 0.16f, 0.3f);
+		scrollBg.color = new Color(0.02f, 0.12f, 0.13f, 0.54f);
+		AddGameOutline(scrollGO, new Color(0.48f, 0.4f, 0.19f, 0.55f), new Vector2(1f, -1f));
 		RectTransform scrollRT = scrollGO.GetComponent<RectTransform>();
 		scrollRT.anchorMin = Vector2.zero;
 		scrollRT.anchorMax = Vector2.one;
@@ -603,7 +669,7 @@ public class UIManager : MonoBehaviour
 		scrollRT.offsetMax = new Vector2(-8f, 0f - top);
 		GameObject vpGO = new GameObject("Viewport");
 		vpGO.transform.SetParent(scrollGO.transform, worldPositionStays: false);
-		vpGO.AddComponent<Image>().color = Color.white;
+		vpGO.AddComponent<Image>().color = Color.clear;
 		vpGO.AddComponent<RectMask2D>();
 		RectTransform vpRT = vpGO.GetComponent<RectTransform>();
 		vpRT.anchorMin = Vector2.zero;
@@ -618,8 +684,8 @@ public class UIManager : MonoBehaviour
 		_chatContentRT.pivot = new Vector2(0.5f, 1f);
 		_chatContentRT.sizeDelta = new Vector2(0f, 0f);
 		VerticalLayoutGroup cl = contentGO.AddComponent<VerticalLayoutGroup>();
-		cl.spacing = 8f;
-		cl.padding = new RectOffset(5, 5, 5, 5);
+		cl.spacing = 10f;
+		cl.padding = new RectOffset(8, 8, 8, 8);
 		cl.childForceExpandWidth = true;
 		cl.childForceExpandHeight = false;
 		contentGO.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -632,9 +698,332 @@ public class UIManager : MonoBehaviour
 		_chatScroll.viewport = vpRT;
 	}
 
+	private void BuildImmersiveFreeInputControls()
+	{
+		_freeInputOptionOverlay = MakeButton(_canvasGO.transform, "自由输入", 560f, 58f, GAME_TEAL).gameObject;
+		_freeInputOptionOverlay.name = "ImmersiveFreeInputOption";
+		AddGameOutline(_freeInputOptionOverlay, GAME_GOLD, new Vector2(2f, -2f));
+		RectTransform optionRT = _freeInputOptionOverlay.GetComponent<RectTransform>();
+		optionRT.anchorMin = (optionRT.anchorMax = new Vector2(0.5f, 0.5f));
+		optionRT.anchoredPosition = new Vector2(0f, -235f);
+		Text optionText = _freeInputOptionOverlay.GetComponentInChildren<Text>(includeInactive: true);
+		if (optionText != null)
+		{
+			optionText.fontSize = 28;
+			optionText.color = GAME_TEXT;
+			optionText.fontStyle = FontStyle.Bold;
+		}
+		_freeInputOptionOverlay.GetComponent<Button>().onClick.AddListener(delegate
+		{
+			SelectImmersiveFreeInput(MenuDialog.GetMenuDialog());
+		});
+
+		_immersiveInputPanel = MakePanel(_canvasGO.transform, "ImmersiveFreeInputPanel", 1040f, 76f, GAME_PARCHMENT);
+		AddGameOutline(_immersiveInputPanel, GAME_GOLD, new Vector2(2f, -2f));
+		RectTransform panelRT = _immersiveInputPanel.GetComponent<RectTransform>();
+		panelRT.anchorMin = (panelRT.anchorMax = new Vector2(0.5f, 0f));
+		panelRT.pivot = new Vector2(0.5f, 0f);
+		panelRT.anchoredPosition = new Vector2(140f, 76f);
+		HorizontalLayoutGroup layout = _immersiveInputPanel.AddComponent<HorizontalLayoutGroup>();
+		layout.padding = new RectOffset(18, 18, 12, 12);
+		layout.spacing = 0f;
+		layout.childForceExpandHeight = true;
+		layout.childForceExpandWidth = false;
+		layout.childAlignment = TextAnchor.MiddleCenter;
+		_immersiveInputField = MakeInputField(_immersiveInputPanel.transform, "在这里输入想说的话...", 0f, 0f);
+		StyleInputField(_immersiveInputField, new Color(0.92f, 0.92f, 0.78f, 0.1f), GAME_INK, new Color(0.16f, 0.33f, 0.34f, 0.82f));
+		AddGameOutline(_immersiveInputField.gameObject, new Color(0.48f, 0.39f, 0.17f, 0.72f), new Vector2(1f, -1f));
+		LayoutElement immersiveInputLayout = _immersiveInputField.gameObject.GetComponent<LayoutElement>();
+		if (immersiveInputLayout != null)
+		{
+			immersiveInputLayout.flexibleWidth = 1f;
+		}
+		_immersiveSubmitBtn = null;
+		_immersiveInputField.onEndEdit.AddListener(OnImmersiveInputEndEdit);
+	}
+
+	public void ScheduleFreeInputOptionForNpcTalk()
+	{
+		if (_freeInputOptionCoroutine != null)
+		{
+			StopCoroutine(_freeInputOptionCoroutine);
+		}
+		HideFreeInputOptionOverlay();
+		_freeInputOptionCoroutine = StartCoroutine(AppendFreeInputOptionWhenReady());
+	}
+
+	private IEnumerator AppendFreeInputOptionWhenReady()
+	{
+		MenuDialog menuDialog = null;
+		int lastCount = -1;
+		int stableFrames = 0;
+		bool optionReady = false;
+		for (int i = 0; i < 40; i++)
+		{
+			try
+			{
+				menuDialog = MenuDialog.GetMenuDialog();
+			}
+			catch (Exception arg)
+			{
+				AIChatManager.logger.LogWarning((object)$"[UIManager] 获取原生交谈菜单失败: {arg}");
+			}
+			if (menuDialog != null && menuDialog.gameObject.activeInHierarchy && menuDialog.DisplayedOptionsCount > 0)
+			{
+				int count = menuDialog.DisplayedOptionsCount;
+				if (count == lastCount)
+				{
+					stableFrames++;
+				}
+				else
+				{
+					stableFrames = 0;
+					lastCount = count;
+				}
+				if (stableFrames >= 2)
+				{
+					optionReady = AppendFreeInputOption(menuDialog);
+					break;
+				}
+			}
+			yield return null;
+		}
+		if (!optionReady)
+		{
+			AIChatManager.logger.LogInfo((object)"[UIManager] 原生交谈菜单未能追加自由输入，显示备用按钮");
+			ShowFreeInputOptionOverlay();
+		}
+		_freeInputOptionCoroutine = null;
+	}
+
+	private bool AppendFreeInputOption(MenuDialog menuDialog)
+	{
+		if (menuDialog == null)
+		{
+			return false;
+		}
+		if (MenuHasFreeInputOption(menuDialog))
+		{
+			return true;
+		}
+		bool added = false;
+		try
+		{
+			added = menuDialog.AddOption("自由输入", interactable: true, hideOption: false, null);
+			if (added)
+			{
+				int buttonIndex = menuDialog.NowOption;
+				if (buttonIndex >= 0 && menuDialog.CachedButtons != null && buttonIndex < menuDialog.CachedButtons.Length && menuDialog.CachedButtons[buttonIndex] != null)
+				{
+					menuDialog.CachedButtons[buttonIndex].onClick.RemoveAllListeners();
+					menuDialog.CachedButtons[buttonIndex].onClick.AddListener(delegate
+					{
+						SelectImmersiveFreeInput(menuDialog);
+					});
+					AIChatManager.logger.LogInfo((object)"[UIManager] 已向原生交谈菜单追加自由输入选项");
+				}
+			}
+		}
+		catch (Exception arg)
+		{
+			AIChatManager.logger.LogWarning((object)$"[UIManager] 原生菜单追加自由输入失败: {arg}");
+		}
+		return added;
+	}
+
+	private bool MenuHasFreeInputOption(MenuDialog menuDialog)
+	{
+		if (menuDialog == null || menuDialog.CachedButtons == null)
+		{
+			return false;
+		}
+		foreach (Button button in menuDialog.CachedButtons)
+		{
+			if (button == null || !button.gameObject.activeSelf)
+			{
+				continue;
+			}
+			Text text = button.GetComponentInChildren<Text>(includeInactive: true);
+			if (text != null && string.Equals(text.text, "自由输入", StringComparison.Ordinal))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void SelectImmersiveFreeInput(MenuDialog menuDialog)
+	{
+		try
+		{
+			if (menuDialog != null)
+			{
+				menuDialog.Clear();
+				menuDialog.SetActive(state: false);
+			}
+		}
+		catch (Exception arg)
+		{
+			AIChatManager.logger.LogWarning((object)$"[UIManager] 关闭原生交谈菜单失败: {arg}");
+		}
+		HideFreeInputOptionOverlay();
+		ShowImmersiveFreeInput();
+	}
+
+	private void ShowFreeInputOptionOverlay()
+	{
+		if (_freeInputOptionOverlay != null)
+		{
+			_freeInputOptionOverlayExpireRealtime = Time.unscaledTime + 12f;
+			_freeInputOptionOverlay.SetActive(value: true);
+			AIChatManager.logger.LogInfo((object)"[UIManager] 已显示自由输入备用按钮");
+		}
+	}
+
+	private void HideFreeInputOptionOverlay()
+	{
+		if (_freeInputOptionOverlay != null)
+		{
+			_freeInputOptionOverlay.SetActive(value: false);
+		}
+		_freeInputOptionOverlayExpireRealtime = -1f;
+	}
+
+	private void ShowImmersiveFreeInput()
+	{
+		if (_immersiveInputBusy)
+		{
+			return;
+		}
+		if (!ConfigManager.IsConfigReady())
+		{
+			OpenApiConfigForImmersiveInput();
+			return;
+		}
+		if (!EnsureCurrentNpcChatReady())
+		{
+			AIChatManager.logger.LogWarning((object)"[UIManager] 当前 NPC 未就绪，无法打开自由输入。");
+			return;
+		}
+		if (_immersiveInputPanel == null || _immersiveInputField == null)
+		{
+			return;
+		}
+		_immersiveInputField.text = string.Empty;
+		_immersiveInputPanel.SetActive(value: true);
+		SetImmersiveFreeInputBusy(busy: false);
+		if (EventSystem.current != null)
+		{
+			EventSystem.current.SetSelectedGameObject(_immersiveInputField.gameObject);
+		}
+		_immersiveInputField.ActivateInputField();
+	}
+
+	private void HideImmersiveFreeInput()
+	{
+		if (_immersiveInputPanel != null)
+		{
+			_immersiveInputPanel.SetActive(value: false);
+		}
+		SetImmersiveFreeInputBusy(busy: false);
+	}
+
+	private void OnImmersiveSubmitClicked()
+	{
+		if (_immersiveInputField == null || _immersiveInputBusy)
+		{
+			return;
+		}
+		string msg = _immersiveInputField.text.Trim();
+		if (string.IsNullOrEmpty(msg))
+		{
+			return;
+		}
+		_immersiveInputField.text = string.Empty;
+		HideImmersiveFreeInput();
+		SetImmersiveFreeInputBusy(busy: true);
+		NPCDialog.Instance?.OnImmersiveSendMessage(msg);
+	}
+
+	private void OnImmersiveInputEndEdit(string text)
+	{
+		if ((Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) && !string.IsNullOrEmpty(text.Trim()))
+		{
+			OnImmersiveSubmitClicked();
+		}
+	}
+
+	public void SetImmersiveFreeInputBusy(bool busy)
+	{
+		_immersiveInputBusy = busy;
+		if (_immersiveInputField != null)
+		{
+			_immersiveInputField.interactable = !busy;
+		}
+		if (_immersiveSubmitBtn != null)
+		{
+			_immersiveSubmitBtn.interactable = !busy;
+		}
+	}
+
+	public void FinishImmersiveFreeInputRound(bool reopenInput)
+	{
+		SetImmersiveFreeInputBusy(busy: false);
+		if (!reopenInput)
+		{
+			return;
+		}
+		if (_immersiveReopenCoroutine != null)
+		{
+			StopCoroutine(_immersiveReopenCoroutine);
+		}
+		_immersiveReopenCoroutine = StartCoroutine(ReopenImmersiveFreeInputWhenReady());
+	}
+
+	private IEnumerator ReopenImmersiveFreeInputWhenReady()
+	{
+		for (int i = 0; i < 30; i++)
+		{
+			yield return null;
+			if (!IsGameDialogActive())
+			{
+				ShowImmersiveFreeInput();
+				_immersiveReopenCoroutine = null;
+				yield break;
+			}
+		}
+		ShowImmersiveFreeInput();
+		_immersiveReopenCoroutine = null;
+	}
+
+	private bool EnsureCurrentNpcChatReady()
+	{
+		int currentNpcId = UINPCJiaoHu.Inst?.NowJiaoHuNPC?.ID ?? (AIChatManager.npcInfo?.NpcID ?? -1);
+		if (currentNpcId <= 0 || (UnityEngine.Object)(object)AIChatManager.Instance == null)
+		{
+			return AIChatManager.npcInfo != null && AIChatManager.npcInfo.NpcID > 0 && NPCDialog.Instance != null;
+		}
+		if (AIChatManager.npcInfo == null || AIChatManager.npcInfo.NpcID != currentNpcId || NPCDialog.Instance?.npcInfo == null)
+		{
+			AIChatManager.Instance.StartChatWithNpc(currentNpcId);
+		}
+		return AIChatManager.npcInfo != null && AIChatManager.npcInfo.NpcID > 0 && NPCDialog.Instance != null;
+	}
+
+	private void OpenApiConfigForImmersiveInput()
+	{
+		if (_chatPanel != null)
+		{
+			_chatPanel.SetActive(value: true);
+		}
+		ShowSettingsOnly();
+		SetStatusText("首次使用，请先完成 API 配置后点保存");
+	}
+
 	private void BuildSettingsPanel()
 	{
 		_settingsPanel = MakePanel(_canvasGO.transform, "SettingsPanel", 340f, 810f, PANEL_COLOR);
+		AddGameOutline(_settingsPanel, GAME_GOLD, new Vector2(2f, -2f));
 		RectTransform srt = _settingsPanel.GetComponent<RectTransform>();
 		Vector2 anchorMin = (srt.anchorMax = new Vector2(0.5f, 0.5f));
 		srt.anchorMin = anchorMin;
@@ -717,6 +1106,7 @@ public class UIManager : MonoBehaviour
 	private void BuildModConfigPanel()
 	{
 		_modConfigPanel = MakePanel(_canvasGO.transform, "ModConfigPanel", 340f, 810f, PANEL_COLOR);
+		AddGameOutline(_modConfigPanel, GAME_GOLD, new Vector2(2f, -2f));
 		RectTransform mrt = _modConfigPanel.GetComponent<RectTransform>();
 		Vector2 anchorMin = (mrt.anchorMax = new Vector2(0.5f, 0.5f));
 		mrt.anchorMin = anchorMin;
@@ -988,6 +1378,7 @@ public class UIManager : MonoBehaviour
 	private void BuildModelConfigPanel()
 	{
 		_modelConfigPanel = MakePanel(_canvasGO.transform, "ModelConfigPanel", 340f, 810f, PANEL_COLOR);
+		AddGameOutline(_modelConfigPanel, GAME_GOLD, new Vector2(2f, -2f));
 		RectTransform mrt = _modelConfigPanel.GetComponent<RectTransform>();
 		Vector2 anchorMin = (mrt.anchorMax = new Vector2(0.5f, 0.5f));
 		mrt.anchorMin = anchorMin;
@@ -2535,6 +2926,17 @@ public class UIManager : MonoBehaviour
 		return go;
 	}
 
+	private void AddGameOutline(GameObject go, Color color, Vector2 distance)
+	{
+		if (go == null)
+		{
+			return;
+		}
+		Outline outline = go.GetComponent<Outline>() ?? go.AddComponent<Outline>();
+		outline.effectColor = color;
+		outline.effectDistance = distance;
+	}
+
 	private Text CreateText(Transform parent, string text, int size, Color color, FontStyle style = FontStyle.Normal)
 	{
 		GameObject go = new GameObject("Txt");
@@ -2560,14 +2962,23 @@ public class UIManager : MonoBehaviour
 		img.color = bgColor;
 		Button btn = go.AddComponent<Button>();
 		btn.targetGraphic = img;
+		ColorBlock colors = btn.colors;
+		colors.normalColor = bgColor;
+		colors.highlightedColor = ShiftColor(bgColor, 0.12f);
+		colors.pressedColor = ShiftColor(bgColor, -0.1f);
+		colors.disabledColor = new Color(bgColor.r * 0.55f, bgColor.g * 0.55f, bgColor.b * 0.55f, 0.45f);
+		colors.fadeDuration = 0.12f;
+		btn.colors = colors;
+		AddGameOutline(go, new Color(0.62f, 0.5f, 0.22f, 0.82f), new Vector2(1f, -1f));
 		go.GetComponent<RectTransform>().sizeDelta = new Vector2(w, h);
 		GameObject tGO = new GameObject("Lbl");
 		tGO.transform.SetParent(go.transform, worldPositionStays: false);
 		Text t = tGO.AddComponent<Text>();
 		t.text = label;
 		t.font = GetFont();
-		t.fontSize = 14;
+		t.fontSize = 15;
 		t.color = TEXT_PRIMARY;
+		t.fontStyle = FontStyle.Bold;
 		t.alignment = TextAnchor.MiddleCenter;
 		RectTransform tRT = tGO.GetComponent<RectTransform>();
 		tRT.anchorMin = Vector2.zero;
@@ -2595,6 +3006,7 @@ public class UIManager : MonoBehaviour
 		GameObject go = new GameObject("Input");
 		go.transform.SetParent(parent, worldPositionStays: false);
 		go.AddComponent<Image>().color = INPUT_BG;
+		AddGameOutline(go, new Color(0.44f, 0.36f, 0.17f, 0.65f), new Vector2(1f, -1f));
 		if (w > 0f && h > 0f)
 		{
 			go.GetComponent<RectTransform>().sizeDelta = new Vector2(w, h);
@@ -2609,7 +3021,7 @@ public class UIManager : MonoBehaviour
 		tGO.transform.SetParent(go.transform, worldPositionStays: false);
 		Text t = tGO.AddComponent<Text>();
 		t.font = GetFont();
-		t.fontSize = 14;
+		t.fontSize = 15;
 		t.color = TEXT_PRIMARY;
 		t.supportRichText = false;
 		t.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -2617,26 +3029,63 @@ public class UIManager : MonoBehaviour
 		RectTransform tRT = tGO.GetComponent<RectTransform>();
 		tRT.anchorMin = Vector2.zero;
 		tRT.anchorMax = Vector2.one;
-		tRT.offsetMin = new Vector2(8f, 2f);
-		tRT.offsetMax = new Vector2(-8f, -2f);
+		tRT.offsetMin = new Vector2(10f, 2f);
+		tRT.offsetMax = new Vector2(-10f, -2f);
 		GameObject phGO = new GameObject("Placeholder");
 		phGO.transform.SetParent(go.transform, worldPositionStays: false);
 		Text pt = phGO.AddComponent<Text>();
 		pt.text = ph;
 		pt.font = GetFont();
-		pt.fontSize = 14;
+		pt.fontSize = 15;
 		pt.fontStyle = FontStyle.Italic;
 		pt.color = TEXT_SECONDARY;
 		pt.horizontalOverflow = HorizontalWrapMode.Overflow;
 		RectTransform pRT = phGO.GetComponent<RectTransform>();
 		pRT.anchorMin = Vector2.zero;
 		pRT.anchorMax = Vector2.one;
-		pRT.offsetMin = new Vector2(8f, 2f);
-		pRT.offsetMax = new Vector2(-8f, -2f);
+		pRT.offsetMin = new Vector2(10f, 2f);
+		pRT.offsetMax = new Vector2(-10f, -2f);
 		InputField input = go.AddComponent<InputField>();
 		input.textComponent = t;
 		input.placeholder = pt;
+		input.customCaretColor = true;
+		input.caretColor = TEXT_PRIMARY;
+		input.selectionColor = new Color(0.72f, 0.58f, 0.28f, 0.35f);
 		return input;
+	}
+
+	private void StyleInputField(InputField input, Color background, Color textColor, Color placeholderColor)
+	{
+		if (input == null)
+		{
+			return;
+		}
+		Image image = input.gameObject.GetComponent<Image>();
+		if (image != null)
+		{
+			image.color = background;
+		}
+		if (input.textComponent != null)
+		{
+			input.textComponent.color = textColor;
+			input.textComponent.fontSize = 16;
+			input.textComponent.alignment = TextAnchor.MiddleLeft;
+		}
+		Text placeholder = input.placeholder as Text;
+		if (placeholder != null)
+		{
+			placeholder.color = placeholderColor;
+			placeholder.fontSize = 16;
+			placeholder.alignment = TextAnchor.MiddleLeft;
+		}
+		input.customCaretColor = true;
+		input.caretColor = textColor;
+		input.selectionColor = new Color(GAME_GOLD.r, GAME_GOLD.g, GAME_GOLD.b, 0.35f);
+	}
+
+	private Color ShiftColor(Color color, float amount)
+	{
+		return new Color(Mathf.Clamp01(color.r + amount), Mathf.Clamp01(color.g + amount), Mathf.Clamp01(color.b + amount), color.a);
 	}
 
 	private void MakeSpacer(Transform parent, float height)

@@ -29,6 +29,12 @@ namespace MCS_AIChatMod.Tests
             failed += Run("PromptBuilder resolves bundled special card by npc name", PromptBuilderResolvesBundledSpecialCardByNpcName);
             failed += Run("PromptBuilder returns null for unknown bundled card", PromptBuilderReturnsNullForUnknownBundledCard);
             failed += Run("PromptBuilder puts role relationship and realm before numeric attributes", PromptBuilderPutsRoleRelationshipAndRealmFirst);
+            failed += Run("NativeDialogPresenter builds safe Next say line", NativeDialogPresenterBuildsSafeNextSayLine);
+            failed += Run("NativeDialogPresenter keeps fallback speaker when npc name missing", NativeDialogPresenterKeepsFallbackSpeakerWhenNpcNameMissing);
+            failed += Run("NPCDialog reopens immersive input after normal reply", NPCDialogReopensImmersiveInputAfterNormalReply);
+            failed += Run("NPCDialog does not reopen immersive input before battle", NPCDialogDoesNotReopenImmersiveInputBeforeBattle);
+            failed += Run("NPCDialog describes elapsed dialog time", NPCDialogDescribesElapsedDialogTime);
+            failed += Run("NPCDialog builds prompt time context", NPCDialogBuildsPromptTimeContext);
 
             if (failed > 0)
             {
@@ -206,6 +212,64 @@ namespace MCS_AIChatMod.Tests
             AssertOrder(prompt, "双方境界:", "以下为你要扮演的npc的基础信息:", "realm before npc numeric attributes");
         }
 
+        private static void NativeDialogPresenterBuildsSafeNextSayLine()
+        {
+            Type type = GetNativeDialogPresenterType();
+            MethodInfo method = type.GetMethod("BuildNextSayLineForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("NativeDialogPresenter.BuildNextSayLineForTest was not found.");
+            }
+
+            string line = (string)method.Invoke(null, new object[] { "NPC#A\r\nB", "First#Second\r\nThird" });
+
+            AssertEqual("NPC A B#First Second Third", line, "safe Next say line");
+        }
+
+        private static void NativeDialogPresenterKeepsFallbackSpeakerWhenNpcNameMissing()
+        {
+            Type type = GetNativeDialogPresenterType();
+            MethodInfo method = type.GetMethod("BuildNextSayLineForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("NativeDialogPresenter.BuildNextSayLineForTest was not found.");
+            }
+
+            string line = (string)method.Invoke(null, new object[] { "", "Silent." });
+
+            AssertEqual("NPC#Silent.", line, "fallback speaker Next say line");
+        }
+
+        private static void NPCDialogReopensImmersiveInputAfterNormalReply()
+        {
+            bool shouldReopen = ShouldReopenImmersiveInputAfterReply(showImmersiveReply: true, shouldTriggerBattle: false);
+
+            AssertEqual(true, shouldReopen, "normal immersive reply should reopen input");
+        }
+
+        private static void NPCDialogDoesNotReopenImmersiveInputBeforeBattle()
+        {
+            bool shouldReopen = ShouldReopenImmersiveInputAfterReply(showImmersiveReply: true, shouldTriggerBattle: true);
+
+            AssertEqual(false, shouldReopen, "battle immersive reply should not reopen input");
+        }
+
+        private static void NPCDialogDescribesElapsedDialogTime()
+        {
+            string elapsed = DescribeDialogElapsedTime("0001年01月01日", "0001年02月03日");
+
+            AssertEqual("1个月3天", elapsed, "elapsed dialog time");
+        }
+
+        private static void NPCDialogBuildsPromptTimeContext()
+        {
+            string context = BuildPromptTimeContext("0149年02月01日", "0149年02月15日");
+
+            AssertContains(context, "当前游戏时间：0149年02月15日", "current game time");
+            AssertContains(context, "上一次对话时间：0149年02月01日", "last dialog time");
+            AssertContains(context, "距离上一次对话：14天", "elapsed dialog time context");
+        }
+
         private static object ParseReply(string raw)
         {
             Type type = GetDialogEffectType();
@@ -307,6 +371,39 @@ namespace MCS_AIChatMod.Tests
             return (string)method.Invoke(null, new object[] { npcInfo, characterContent });
         }
 
+        private static bool ShouldReopenImmersiveInputAfterReply(bool showImmersiveReply, bool shouldTriggerBattle)
+        {
+            MethodInfo method = typeof(NPCDialog).GetMethod("ShouldReopenImmersiveInputAfterReplyForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("NPCDialog.ShouldReopenImmersiveInputAfterReplyForTest was not found.");
+            }
+
+            return (bool)method.Invoke(null, new object[] { showImmersiveReply, shouldTriggerBattle });
+        }
+
+        private static string DescribeDialogElapsedTime(string lastGameTimeText, string currentGameTimeText)
+        {
+            MethodInfo method = typeof(NPCDialog).GetMethod("DescribeDialogElapsedTimeForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("NPCDialog.DescribeDialogElapsedTimeForTest was not found.");
+            }
+
+            return (string)method.Invoke(null, new object[] { lastGameTimeText, currentGameTimeText });
+        }
+
+        private static string BuildPromptTimeContext(string lastGameTimeText, string currentGameTimeText)
+        {
+            MethodInfo method = typeof(NPCDialog).GetMethod("BuildPromptTimeContextForTest", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("NPCDialog.BuildPromptTimeContextForTest was not found.");
+            }
+
+            return (string)method.Invoke(null, new object[] { lastGameTimeText, currentGameTimeText });
+        }
+
         private static string CreateBundledCardFixture()
         {
             string root = Path.Combine(Path.GetTempPath(), "mcs_card_fixture_" + Guid.NewGuid().ToString("N"));
@@ -345,6 +442,17 @@ namespace MCS_AIChatMod.Tests
             if (type == null)
             {
                 throw new InvalidOperationException("MCS_AIChatMod.DialogEffectMvp type was not found.");
+            }
+
+            return type;
+        }
+
+        private static Type GetNativeDialogPresenterType()
+        {
+            Type type = typeof(AIChatManager).Assembly.GetType("MCS_AIChatMod.NativeDialogPresenter");
+            if (type == null)
+            {
+                throw new InvalidOperationException("MCS_AIChatMod.NativeDialogPresenter type was not found.");
             }
 
             return type;
